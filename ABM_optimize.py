@@ -24,6 +24,20 @@ method = args.method
 # ==========================
 # ==========================
 
+# Create Output_Biomarkers file if it does not exist
+output_file_path = 'output/Output_Biomarkers.csv'
+if not os.path.exists(output_file_path):
+    with open(output_file_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            'clock', 'TNF', 'TGF', 'FGF', 'IL6', 'IL8', 'IL10',
+            'Tropocollagen', 'Collagen', 'FragentedCollagen',
+            'Tropoelastin', 'Elastin', 'FragmentedElastin',
+            'HA', 'FragmentedHA', 'Damage',
+            'ActivatedFibroblast', 'Fibroblast',
+            'Elastic Mod (Pa)', 'Swelling Ratio', 'Mass Loss (%)'
+        ])
+
 def construct_simplex(bounds: np.ndarray, selected_params: list) -> np.ndarray:
     """
     Construct a simplex for n selected parameters
@@ -265,6 +279,7 @@ Nfeval = 1
 
 # Construct an initial simplex
 selected_init = construct_simplex(bounds, params)
+
 
 result = minimize(
     ABM if not args.test else test_ABM, 

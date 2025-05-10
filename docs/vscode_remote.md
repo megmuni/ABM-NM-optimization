@@ -28,4 +28,4 @@ ssh-keygen -t ed25519
 
 9. Note that opening files can sometimes not work. You can use `CTRL + p` and type the name of the file to open it if clicking on the file in the left sidebar doesn't work.
 
-10. To run terminal commands from within VSCode, you may need to open a new shell (**Terminal** window in VSCode).
+10. To run terminal commands from within VSCode, you may need to open a new shell (**Terminal** window in VSCode). Click the little "+" icon in the top right of this window to add a new terminal.

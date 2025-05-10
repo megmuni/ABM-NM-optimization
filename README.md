@@ -64,5 +64,5 @@ It can be time-consuming to run the ABM_optimize_job.sh script as a job. Inside 
 Note that if you do this, you should ensure that you run the script with --test True to use the test_ABM method rather than the actual ABM method (which is resource intensive).
 
 ```bash
-sbatch ABM_optimize_job.sh --test True
+./ABM_optimize_job.sh --test True
 ```

@@ -59,7 +59,7 @@ You can customize both the number and method at the same time.
 
 ## Testing
 
-It can be time-consuming to run the ABM_optimize_job.sh script as a job. Inside of ABM_optimize_job.sh, you can uncomment out the lines in the blocks marked as TESTING to run the script directly within your own directory, such as in scratch or another temporary directory.
+It can be time-consuming to run the ABM_optimize_job.sh script as a job. Inside of ABM_optimize_job.sh, you can uncomment out the lines in the blocks marked as TESTING to run the script in your scratch directory (edit the line to change it to another directory if you want).
 
 Note that if you do this, you should ensure that you run the script with --test True to use the test_ABM method rather than the actual ABM method (which is resource intensive).
 

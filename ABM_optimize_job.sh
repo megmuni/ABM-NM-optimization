@@ -17,8 +17,8 @@ module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || { echo "Module load f
 # to override the default SLURM_TMPDIR
 # for testing purposes.
 
-# This will create the virtual environment in the 
-# parent of the current directory. You can also replace it 
+# This will create the virtual environment in the user's 
+# scratch directory. You can also replace it 
 # with a different location.
 
 # If you do this, make sure ABM_optimize.py
@@ -33,15 +33,15 @@ module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || { echo "Module load f
 # =========================================
 # TESTING ONLY
 # =========================================
-#export SLURM_TMPDIR=".."
-#echo "Changed SLURM_TMPDIR to $SLURM_TMPDIR for testing purposes."
-#
-#if [ -d "$SLURM_TMPDIR/env" ]; then
+# export SLURM_TMPDIR="$HOME/scratch"
+# echo "Changed SLURM_TMPDIR to $SLURM_TMPDIR for testing purposes."
+
+# if [ -d "$SLURM_TMPDIR/env" ]; then
 #       echo "Directory '$SLURM_TMPDIR/env' already exists."
-#else
+# else
 #       echo "Directory '$SLURM_TMPDIR/env' does not exist. Creating it."
 #       mkdir "$SLURM_TMPDIR/env" || { echo "Failed to create directory"; exit 1; }
-#fi
+# fi
 # =========================================
 
 echo "SLURM_TMPDIR: $SLURM_TMPDIR"
@@ -137,9 +137,9 @@ echo "Packaged directory into: $tarball_name"
 # =========================================
 # TESTING ONLY
 # =========================================
-#echo "Cleaning up: Deleting the virtual environment..."
-#rm -rf "$SLURM_TMPDIR/env" || { echo "Failed to delete virtual environment"; exit 1; }
-#echo "Virtual environment deleted successfully."
+# echo "Cleaning up: Deleting the virtual environment..."
+# rm -rf "$SLURM_TMPDIR/env" || { echo "Failed to delete virtual environment"; exit 1; }
+# echo "Virtual environment deleted successfully."
 # =========================================
 
 echo "Script finished successfully."

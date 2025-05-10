@@ -8,7 +8,7 @@
 
 **Collaboration workflow**
 
-1. You will create a private repository in your own directory (i.e. in your home directory).
+1. You will create a private repository in your own directory (i.e. in your home or project directory).
 2. You can pull/push changes to the remote repository, or create branches for testing changes.
 
 **Instructions for setup**

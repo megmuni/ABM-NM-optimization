@@ -24,9 +24,14 @@ method = args.method
 # ==========================
 # ==========================
 
-# Create Output_Biomarkers file if it does not exist
+# create Output_Biomarkers file if it does not exist
 output_file_path = 'output/Output_Biomarkers.csv'
-if not os.path.exists(output_file_path):
+
+try:
+    with open(output_file_path, 'r'):
+        pass  # file exists, do nothing
+except FileNotFoundError:
+    # file doesn't exist, create it with headers
     with open(output_file_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([

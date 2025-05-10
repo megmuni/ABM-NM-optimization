@@ -4,7 +4,7 @@ Normally, VSCode only allows you to edit/view files locally. However, you can co
 
 1. Install the **Remote-SSH** extension on VSCode.
 
-2. Ensure you have a SSH key, which you can access by checking `cat ~/.ssh/id_ed25519`. If the file doesn't exist, you can create it by:
+2. Ensure you have a SSH key, which you can access by checking `cat ~/.ssh/id_ed25519` on the server. If the file doesn't exist, you can create it by:
 
 ```bash
 ssh-keygen -t ed25519
@@ -22,12 +22,12 @@ ssh-keygen -t ed25519
 
 6. This opens a new instance of VSCode. Enter your password as prompted to in the search bar on top.
 
-7. Navigate to the **Terminal** window in the bottom of VSCode to complete the two-factor authentication. This is kind of finnicky, so if it is empty, click on the "details" link in the prompt that opens in the bottom right.
+7. Navigate to the **Terminal** window in the bottom of VSCode to complete the two-factor authentication. This is kind of finnicky, so if it is empty, click on the "details" link in the prompt that opens in the bottom right. It will say "Setting up SSH Host [hostname]: (details) Initializing VSCode Server." in this prompt. 
 
-You should see the option to trigger 2FA. You may be prompted to enter your password a second time.
+You should see the option to trigger 2FA, just as you would when doing `ssh` into the server from your terminal. You may be prompted to enter your password in VSCode a second time.
 
 8. If all is well, you should now be able to select **Open Folder** in the left sidebar. You may need to recomplete the user login/authentication step after selecting the folder you want to open.
 
 9. Note that opening files can sometimes not work. You can use `CTRL + p` and type the name of the file to open it if clicking on the file in the left sidebar doesn't work.
 
-10. To run terminal commands from within VSCode, you may need to open a new shell (**Terminal** window in VSCode). Click the little "+" icon in the top right of this window to add a new terminal.
+10. To access the server shell from within VSCode, you may need to open a new shell (**Terminal** window in VSCode). Click the little "+" icon in the top right of this window to add a new terminal.

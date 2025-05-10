@@ -22,7 +22,9 @@ ssh-keygen -t ed25519
 
 6. This opens a new instance of VSCode. Enter your password as prompted to in the search bar on top.
 
-7. Navigate to the **Terminal** window in the bottom of VSCode to complete the two-factor authentication. This is kind of finnicky, so if it is empty, you may need to click on the top search bar which may prompt you to enter a new password.
+7. Navigate to the **Terminal** window in the bottom of VSCode to complete the two-factor authentication. This is kind of finnicky, so if it is empty, click on the "details" link in the prompt that opens in the bottom right.
+
+You should see the option to trigger 2FA. You may be prompted to enter your password a second time.
 
 8. If all is well, you should now be able to select **Open Folder** in the left sidebar. You may need to recomplete the user login/authentication step after selecting the folder you want to open.
 

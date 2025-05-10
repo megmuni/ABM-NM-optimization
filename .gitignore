@@ -6,8 +6,12 @@ stdout.txt
 Output_Biomarkers.xlsx
 FinalTotalChemVR.dat
 param_opt_*.tar.gz
-
-bin/
-configFiles/
 running_time.txt
+slurm-*
 
+# need to put your own files in these
+bin/* 
+configFiles/*
+
+# will be populated by the script
+output/SensitivityAnalysis/*

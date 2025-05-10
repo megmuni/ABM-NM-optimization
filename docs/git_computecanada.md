@@ -77,7 +77,7 @@ This should output something like:
 Hi [username]! You've successfully authenticated, but Github does not provide shell access.
 ```
 
-9. You should be able to perform actions like merging/pulling. Clone the repository using the SSH option:
+9. You should be able to perform actions like merging/pulling. Clone the repository using the SSH option into a directory of your choosing:
 
 ```
 git clone git@github.com:mintary/abm-opt.git

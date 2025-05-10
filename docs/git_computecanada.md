@@ -83,3 +83,8 @@ Hi [username]! You've successfully authenticated, but Github does not provide sh
 git clone git@github.com:mintary/abm-opt.git
 ```
 
+10. Create a branch, i.e.
+
+```
+git checkout -b "my-branch"
+```

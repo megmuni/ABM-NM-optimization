@@ -2,7 +2,7 @@
 
 Normally, VSCode only allows you to edit/view files locally. However, you can configure VSCode-Remote to work with files stored in virtual machines/servers.
 
-This setup isn't the best as it bypasses the tool DRAC provides that it _supposed_ to be used to connect to VSCode (as that one requires a license). Running code and setting up environment from VSCode does not seem possible. However, you can still use it as a nicer code editor.
+This setup isn't the best as it bypasses the tool DRAC provides that it _supposed_ to be used to connect to VSCode (as that one requires a license). Running code and setting up environment from VSCode does not seem to work too well. However, you can still use it as a nicer code editor, and have VSCode extensions :)
 
 1. Install the **Remote-SSH** extension on VSCode.
 

@@ -1,0 +1,13 @@
+# ignore any files that have to do with outputted data
+output.txt
+Sample.txt
+stderr.txt
+stdout.txt
+Output_Biomarkers.xlsx
+FinalTotalChemVR.dat
+param_opt_*.tar.gz
+
+bin/
+configFiles/
+running_time.txt
+

@@ -28,4 +28,4 @@ ssh-keygen -t ed25519
 
 8. If all is well, you should now be able to select **Open Folder** in the left sidebar. You may need to recomplete the user login/authentication step after selecting the folder you want to open.
 
-9. Note that you cannot open files normally by clicking on them. You can, however, do `CTRL + p` and type the name of your file to view it in the editor.
+9. Note that opening files can sometimes not work. You can use `CTRL + p` and type the name of the file to open it if clicking on the file in the left sidebar doesn't work.

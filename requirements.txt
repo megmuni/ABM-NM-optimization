@@ -1,0 +1,10 @@
+et_xmlfile==2.0.0+computecanada
+numpy==1.25.2+computecanada
+openpyxl==3.1.5+computecanada
+pandas==2.1.1+computecanada
+python_dateutil==2.9.0.post0+computecanada
+pytz==2025.2+computecanada
+scipy==1.11.2+computecanada
+six==1.17.0+computecanada
+tzdata==2025.2+computecanada
+xlrd==2.0.1+computecanada

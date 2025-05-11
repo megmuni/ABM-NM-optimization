@@ -24,7 +24,7 @@ method = args.method
 # ==========================
 # ==========================
 
-def construct_simplex(bounds: np.ndarray, selected_params: list) -> np.ndarray:
+def construct_simplex(bounds: np.ndarray, selected_params: list):
     """
     Construct a simplex for n selected parameters
     by perturbing the default values (beginning with the minimums)
@@ -69,8 +69,7 @@ def construct_simplex(bounds: np.ndarray, selected_params: list) -> np.ndarray:
         {[[float(value) for value in row] for row in init_simplex]}
         """)
     
-    # convert to numpy array
-    return np.array(init_simplex)
+    return init_simplex
 
 def formatted_string(Nfeval, x, Y) -> str:
     """

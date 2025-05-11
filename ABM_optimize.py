@@ -24,25 +24,6 @@ method = args.method
 # ==========================
 # ==========================
 
-# create Output_Biomarkers file if it does not exist
-output_file_path = 'output/Output_Biomarkers.csv'
-
-try:
-    with open(output_file_path, 'r'):
-        pass  # file exists, do nothing
-except FileNotFoundError:
-    # file doesn't exist, create it with headers
-    with open(output_file_path, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            'clock', 'TNF', 'TGF', 'FGF', 'IL6', 'IL8', 'IL10',
-            'Tropocollagen', 'Collagen', 'FragentedCollagen',
-            'Tropoelastin', 'Elastin', 'FragmentedElastin',
-            'HA', 'FragmentedHA', 'Damage',
-            'ActivatedFibroblast', 'Fibroblast',
-            'Elastic Mod (Pa)', 'Swelling Ratio', 'Mass Loss (%)'
-        ])
-
 def construct_simplex(bounds: np.ndarray, selected_params: list) -> np.ndarray:
     """
     Construct a simplex for n selected parameters
@@ -242,8 +223,11 @@ def ABM(x):
         format_str = formatted_string(Nfeval, x, Y)     
         #print('{0:4d}   {1: 3.6f}  {2: 3.6f}  {3: 3.6f} {4: 3.6f}  {5: 3.6f}    {6: 3.6f}'.format(Nfeval, x[0], x[1], x[2], x[3], x[4], np.sum(Y)))
         print(format_str)
+        NFeval += 1
 
     return np.sum(Y) #SSE
+
+# =================================
 
 # Create parameter names
 numpar = 75 # total number of parameters

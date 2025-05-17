@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --gpus-per-node=2
 #SBATCH --mem=64000M
-#SBATCH --mail-user=emily.wang10@mail.mcgill.ca
+#SBATCH --mail-user=${EMAIL}
 #SBATCH --mail-type=ALL
 
 # =========================================

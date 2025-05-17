@@ -28,8 +28,22 @@
 
 ## Execution
 
-1. Submit `ABM_optimize_job.sh` as a job by running: `sbatch ABM_optimize_job.sh`
-2. Optimization results will be found in the file `output.txt`
+1. Submit the `submit_job.sh` like this:
+```bash
+./submit_job.sh [email to receive SLURM notifications] [optional arguments]
+```
+
+This script will call `ABM_optimize_job.sh` with your email address.
+
+You can also optionally submit the script using `sbatch` if you have some additional settings you want to tweak. To do this, type the following commands in your terminal:
+```bash
+EMAIL=[your email here]
+sbatch ABM_optimize_job.sh [optional arguments]
+```
+
+2. You may want to change the number of parameters or the method for selecting them (see below).
+
+3. Results will be outputed in `output`. You should also see a tarball archive of the entire directory.
 
 ## Analysis
 
@@ -46,23 +60,45 @@ The default method is Random Forest with `n=5` parameters.
 To change the number of parameters:
 
 ```bash
-sbatch ABM_optimize_job.sh --n [NUMBER HERE]
+./submit_job.sh [email] --n [NUMBER HERE]
 ```
 
 To change the method of selecting parameters (different ranking):
 
 ```bash
-sbatch ABM_optimize_job.sh --method [METHOD HERE]
+./submit_job.sh [email] --method [METHOD HERE]
 ```
 
-You can customize both the number and method at the same time.
+You can customize both the number and method at the same time:
+
+```bash
+./submit_job.sh [email] --n [NUMBER HERE] --method [METHOD HERE]
+```
 
 ## Testing
 
-It can be time-consuming to run the ABM_optimize_job.sh script as a job. Inside of ABM_optimize_job.sh, you can uncomment out the lines in the blocks marked as TESTING to run the script in your scratch directory (edit the line to change it to another directory if you want).
+It can be time-consuming to run the ABM_optimize_job.sh script as a job. 
+
+### Testing dimension fitting
+This option can be used to test that the `ABM_optimize.py` script correctly passes inputs from each function to the other.
+
+Inside of ABM_optimize_job.sh, you can uncomment out the lines in the blocks marked as TESTING to run the script in your scratch directory (edit the line to change it to another directory if you want).
 
 Note that if you do this, you should ensure that you run the script with --test True to use the test_ABM method rather than the actual ABM method (which is resource intensive).
 
 ```bash
 ./ABM_optimize_job.sh --test True
 ```
+
+### Testing `testRun`
+`testRun` relies on an available CUDA device, which is only available on the compute clusters. 
+
+As a result, this script attempts to run a single iteration of `testRun`, requesting fewer resources than `ABM_optimize.py`. However, it must still be submitted as a job.
+
+```bash
+EMAIL=[your email for notifs]
+sbatch submit_job.sh
+```
+
+You can also run the job in interactive mode with `salloc`, see documentation here: https://slurm.schedmd.com/salloc.html
+

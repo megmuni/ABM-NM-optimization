@@ -97,7 +97,7 @@ As a result, this script attempts to run a single iteration of `testRun`, reques
 
 ```bash
 EMAIL=[your email for notifs]
-sbatch submit_job.sh
+sbatch ABM_light_test.sh
 ```
 
 You can also run the job in interactive mode with `salloc`, see documentation here: https://slurm.schedmd.com/salloc.html

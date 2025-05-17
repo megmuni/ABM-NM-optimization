@@ -3,7 +3,7 @@ output.txt
 Sample.txt
 stderr.txt
 stdout.txt
-Output_Biomarkers.xlsx
+Output_Biomarkers.csv
 FinalTotalChemVR.dat
 param_opt_*.tar.gz
 running_time.txt

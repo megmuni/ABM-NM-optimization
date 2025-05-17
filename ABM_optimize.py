@@ -222,7 +222,7 @@ def ABM(x):
         format_str = formatted_string(Nfeval, x, Y)     
         #print('{0:4d}   {1: 3.6f}  {2: 3.6f}  {3: 3.6f} {4: 3.6f}  {5: 3.6f}    {6: 3.6f}'.format(Nfeval, x[0], x[1], x[2], x[3], x[4], np.sum(Y)))
         print(format_str)
-        NFeval += 1
+        Nfeval += 1
 
     return np.sum(Y) #SSE
 

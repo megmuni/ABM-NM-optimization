@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --account=def-nicoleli
-#SBATCH --time=09:00:00
+#SBATCH --time=00:10:00
 #SBATCH --cpus-per-task=32
 #SBATCH --gpus-per-node=2
-#SBATCH --mem=64000M
+#SBATCH --mem=16000M
 #SBATCH --mail-user=emily.wang10@mail.mcgill.ca
 #SBATCH --mail-type=ALL
 
@@ -91,11 +91,8 @@ cat requirements.txt
 export OMP_NUM_THREADS=32
 export OMP_NESTED=TRUE
 
-# check the CUDA device
-nvidia-smi || { echo "Failed to check CUDA device"; exit 1; }
-
 echo "Running Python script..."
-python ABM_optimize.py "$@" > output/output.txt 2>&1 || { echo "Python script failed"; exit 1; }
+python test_testRun.py > output/output.txt 2>&1 || { echo "Python script failed"; exit 1; }
 
 # =========================================
 # CREATE OUTPUT DIRECTORY
@@ -118,6 +115,15 @@ method_safe=$(echo "$method" | tr ' ' '_')
 
 # get current date (this is used to name the output file)
 current_date=$(date +"%Y-%m-%d_%H-%M-%S")
+
+
+# report the running time of the script
+end_time=$(date +%s)
+start_time=$(date -d "$SLURM_JOB_START_TIME" +%s)
+running_time=$((end_time - start_time))
+
+touch "running_time.txt"
+echo "Running time: $((running_time / 3600)) hours $(((running_time % 3600) / 60)) minutes $((running_time % 60)) seconds" > "running_time.txt"
 
 # package the entire directory
 echo "Packaging directory..."

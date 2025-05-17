@@ -113,18 +113,6 @@ method=${method:-"Random_Forest"}
 # replace spaces in method with underscores
 method_safe=$(echo "$method" | tr ' ' '_')
 
-# get current date (this is used to name the output file)
-current_date=$(date +"%Y-%m-%d_%H-%M-%S")
-
-
-# report the running time of the script
-end_time=$(date +%s)
-start_time=$(date -d "$SLURM_JOB_START_TIME" +%s)
-running_time=$((end_time - start_time))
-
-touch "running_time.txt"
-echo "Running time: $((running_time / 3600)) hours $(((running_time % 3600) / 60)) minutes $((running_time % 60)) seconds" > "running_time.txt"
-
 # package the entire directory
 echo "Packaging directory..."
 tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"

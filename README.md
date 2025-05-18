@@ -36,8 +36,7 @@ export EMAIL="youremail@mail.com"
 
 2. Submit the script
 ```bash
-sbatch ABM_optimize_job.sh
-
+sbatch --mail-user $EMAIL ABM_optimize_job.sh [optional args]
 ```
 
 3. Results will be outputed in `output`. You should also see a tarball archive of the entire directory.

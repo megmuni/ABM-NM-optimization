@@ -6,6 +6,14 @@ import csv
 import argparse 
 
 # ==========================
+# CONSTANTS
+# TODO: Move these into a config file.
+FIBROBLASTS = 90
+DAY_3_COLLAGEN = 64736.8
+DAY_6_COLLAGEN = 42785
+# ==========================
+
+# ==========================
 # Command line arguments
 # n: number of parameters to optimize
 # method: method to use for parameter importance ranking, must
@@ -23,6 +31,12 @@ n = args.n
 method = args.method
 # ==========================
 # ==========================
+
+def error(expected, actual):
+    """
+    Calculate SSE between expected and actual values.
+    """
+    return ((expected - actual) / max(expected, actual)) ** 2
 
 def construct_simplex(bounds: np.ndarray, selected_params: list):
     """
@@ -145,7 +159,8 @@ def ABM(x):
     Y = np.zeros((6,4))
 
     for i in range(3):
-
+        
+        print(f"Running iteration {i}")
         # Run model
         with open(stdout_file_name, 'a') as stdout_file:
             with open(stderr_file_name, 'a') as stderr_file:
@@ -158,14 +173,18 @@ def ABM(x):
             temp = csv.reader(f)
             temp = list(temp)
 
+            print(f"Day 3: collagen={temp[144][8]} activated={temp[144][16]} fibroblasts={temp[144][17]}")
+            print(f"Day 6: collagen={temp[288][8]} activated={temp[288][16]} fibroblasts={temp[288][17]}")
+
+            print(f"Performing iteration {i}")
             # # Day 3
-            Y[0][i] = ((float(temp[144][16]) + float(temp[144][17]) - 90)/max(float(temp[144][16]) + float(temp[144][17]),90))**2 # Fibroblasts
-            Y[1][i] = ((float(temp[144][8]) - 64736.8)/max(float(temp[144][8]),64736.8))**2 # Collagen
+            Y[0][i] = error(FIBROBLASTS, float(temp[144][16]) + float(temp[144][17]))         # Fibroblasts
+            Y[1][i] = error(DAY_3_COLLAGEN, float(temp[144][8]))   # Collagen
             
             # # Day 6
-            Y[0][i] = ((float(temp[288][16]) + float(temp[288][17]) - 90)/max(float(temp[288][16]) + float(temp[288][17]),90))**2 # Fibroblasts
-            Y[1][i] = ((float(temp[288][8]) - 42785)/max(float(temp[288][8]),42785))**2 # Collagen
-
+            Y[0][i] = error(FIBROBLASTS, loat(temp[288][16]) + float(temp[288][17]))         # Fibroblasts
+            Y[1][i] = error(DAY_6_COLLAGEN, float(temp[288][8]))   # Collagen
+            
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
@@ -182,14 +201,17 @@ def ABM(x):
             temp = csv.reader(f)
             temp = list(temp)
 
-            # # Day 3
-            Y[2][i] = ((float(temp[144][16]) + float(temp[144][17]) - 90)/max(float(temp[144][16]) + float(temp[144][17]),90))**2 # Fibroblasts
-            Y[3][i] = ((float(temp[144][8]) - 64736.8)/max(float(temp[144][8]),64736.8))**2 # Collagen
-            
-            # # Day 6
-            Y[2][i] = ((float(temp[288][16]) + float(temp[288][17]) - 90)/max(float(temp[288][16]) + float(temp[288][17]),90))**2 # Fibroblasts
-            Y[3][i] = ((float(temp[288][8]) - 42785)/max(float(temp[288][8]),42785))**2 # Collagen
+            print(f"Day 3: collagen={temp[144][8]} activated={temp[144][16]} fibroblasts={temp[144][17]}")
+            print(f"Day 6: collagen={temp[288][8]} activated={temp[288][16]} fibroblasts={temp[288][17]}")
 
+            # Day 3
+            Y[2][i] = error(FIBROBLASTS, float(temp[144][16]) + float(temp[144][17]))  # Fibroblasts
+            Y[3][i] = error(DAY_3_COLLAGEN, float(temp[144][8]))  # Collagen
+
+            # Day 6
+            Y[2][i] = error(FIBROBLASTS, float(temp[288][16]) + float(temp[288][17]))  # Fibroblasts
+            Y[3][i] = error(DAY_6_COLLAGEN, float(temp[288][8]))  # Collagen
+            
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
@@ -206,17 +228,22 @@ def ABM(x):
             temp = csv.reader(f)
             temp = list(temp)
 
-            # # Day 3
-            Y[4][i] = ((float(temp[144][16]) + float(temp[144][17]) - 90)/max(float(temp[144][16]) + float(temp[144][17]),90))**2 # Fibroblasts
-            Y[5][i] = ((float(temp[144][8]) - 64736.8)/max(float(temp[144][8]),64736.8))**2 # Collagen
-            
-            # # Day 6
-            Y[4][i] = ((float(temp[288][16]) + float(temp[288][17]) - 90)/max(float(temp[288][16]) + float(temp[288][17]),90))**2 # Fibroblasts
-            Y[5][i] = ((float(temp[288][8]) - 42785)/max(float(temp[288][8]),42785))**2 # Collagen
+            print(f"Day 3: collagen={temp[144][8]} activated={temp[144][16]} fibroblasts={temp[144][17]}")
+            print(f"Day 6: collagen={temp[288][8]} activated={temp[288][16]} fibroblasts={temp[288][17]}")
 
+            # Day 3
+            Y[4][i] = error(FIBROBLASTS, float(temp[144][16]) + float(temp[144][17]))  # Fibroblasts
+            Y[5][i] = error(DAY_3_COLLAGEN, float(temp[144][8]))  # Collagen
+
+            # Day 6
+            Y[4][i] = error(FIBROBLASTS, float(temp[288][16]) + float(temp[288][17]))  # Fibroblasts
+            Y[5][i] = error(DAY_6_COLLAGEN, float(temp[288][8]))  # Collagen
+                    
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
+
+        print(f"Obtained Y: {Y}")
 
         # Dynamically create string based on the number of parameters
         format_str = formatted_string(Nfeval, x, Y)     

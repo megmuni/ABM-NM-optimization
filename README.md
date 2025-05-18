@@ -28,20 +28,17 @@
 
 ## Execution
 
-1. Submit the `submit_job.sh` like this:
+1. Export your email address for notifications like so:
+
 ```bash
-./submit_job.sh [email to receive SLURM notifications] [optional arguments]
+export EMAIL="youremail@mail.com"
 ```
 
-This script will call `ABM_optimize_job.sh` with your email address.
-
-You can also optionally submit the script using `sbatch` if you have some additional settings you want to tweak. To do this, type the following commands in your terminal:
+2. Submit the script
 ```bash
-EMAIL=[your email here]
-sbatch ABM_optimize_job.sh [optional arguments]
-```
+sbatch ABM_optimize_job.sh
 
-2. You may want to change the number of parameters or the method for selecting them (see below).
+```
 
 3. Results will be outputed in `output`. You should also see a tarball archive of the entire directory.
 
@@ -60,19 +57,19 @@ The default method is Random Forest with `n=5` parameters.
 To change the number of parameters:
 
 ```bash
-./submit_job.sh [email] --n [NUMBER HERE]
+sbatch ABM_optimize_job.sh --n [NUMBER HERE]
 ```
 
 To change the method of selecting parameters (different ranking):
 
 ```bash
-./submit_job.sh [email] --method [METHOD HERE]
+sbatch ABM_optimize_job.sh --method [METHOD HERE]
 ```
 
 You can customize both the number and method at the same time:
 
 ```bash
-./submit_job.sh [email] --n [NUMBER HERE] --method [METHOD HERE]
+sbatch ABM_optimize_job.sh --n [NUMBER HERE] --method [METHOD HERE]
 ```
 
 ## Testing

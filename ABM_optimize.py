@@ -182,7 +182,7 @@ def ABM(x):
             Y[1][i] = error(DAY_3_COLLAGEN, float(temp[144][8]))   # Collagen
             
             # # Day 6
-            Y[0][i] = error(FIBROBLASTS, loat(temp[288][16]) + float(temp[288][17]))         # Fibroblasts
+            Y[0][i] = error(FIBROBLASTS, float(temp[288][16]) + float(temp[288][17]))         # Fibroblasts
             Y[1][i] = error(DAY_6_COLLAGEN, float(temp[288][8]))   # Collagen
             
             # Validation

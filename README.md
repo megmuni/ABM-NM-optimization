@@ -56,19 +56,19 @@ The default method is Random Forest with `n=5` parameters.
 To change the number of parameters:
 
 ```bash
-sbatch ABM_optimize_job.sh --n [NUMBER HERE]
+sbatch --mail-user $EMAIL ABM_optimize_job.sh --n [NUMBER HERE]
 ```
 
 To change the method of selecting parameters (different ranking):
 
 ```bash
-sbatch ABM_optimize_job.sh --method [METHOD HERE]
+sbatch --mail-user $EMAIL ABM_optimize_job.sh --method [METHOD HERE]
 ```
 
 You can customize both the number and method at the same time:
 
 ```bash
-sbatch ABM_optimize_job.sh --n [NUMBER HERE] --method [METHOD HERE]
+sbatch --mail-user $EMAIL ABM_optimize_job.sh --n [NUMBER HERE] --method [METHOD HERE]
 ```
 
 ## Testing

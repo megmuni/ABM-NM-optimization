@@ -44,10 +44,10 @@ ssh-keygen -t ed25519 -C [GITHUB EMAIL]
 
 A passphrase is optional.
 
-5. Get the SSH key by entering:
+5. Get the public SSH key by entering:
 
 ```bash
-cat ~/.ssh/id_ed25519
+cat ~/.ssh/id_ed25519.pub
 ```
 
 and copy the output.

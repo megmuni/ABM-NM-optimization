@@ -44,6 +44,26 @@ module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || { echo "Module load f
 # fi
 # =========================================
 
+# PACKAGE DIRECTORY AT FAILURE OR SUCCESS
+
+# extract arguments for naming output file
+for arg in "$@"; do
+    case $arg in
+        --n=*) n="${arg#*=}" ;;
+        --method=*) method="${arg#*=}" ;;
+    esac
+done
+
+n=${n:-5}
+method=${method:-"Random Forest"}
+method_safe=$(echo "$method" | tr ' ' '_') # replace spaces with underscores for safe filename
+
+current_date=$(date +"%Y-%m-%d_%H-%M-%S")
+tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
+
+# trap to package directory on any exit (success or failure)
+trap 'echo "Packaging directory (trap)..."; tar -czf "$tarball_name" . && echo "Packaged directory into: $tarball_name"' EXIT
+
 echo "SLURM_TMPDIR: $SLURM_TMPDIR"
 df -h $SLURM_TMPDIR || { echo "Failed to check disk space"; exit 1; }
 ls -lah $SLURM_TMPDIR
@@ -96,37 +116,6 @@ nvidia-smi || { echo "Failed to check CUDA device"; exit 1; }
 
 echo "Running Python script..."
 python ABM_optimize.py "$@" > output/output.txt 2>&1 || { echo "Python script failed"; exit 1; }
-
-# =========================================
-# CREATE OUTPUT DIRECTORY
-# =========================================
-
-# extract arguments for naming output file
-for arg in "$@"; do
-    case $arg in
-        --n=*) n="${arg#*=}" ;; # extract value for num of parameters
-        --method=*) method="${arg#*=}" ;; # extract value for method
-    esac
-done
-
-# set default values if not provided
-n=${n:-5}
-method=${method:-"Random_Forest"}
-
-# replace spaces in method with underscores
-method_safe=$(echo "$method" | tr ' ' '_')
-
-# get current date (this is used to name the output file)
-current_date=$(date +"%Y-%m-%d_%H-%M-%S")
-
-# package the entire directory
-echo "Packaging directory..."
-tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
-
-echo "Creating tarball..."
-tar -czf "$tarball_name" . || { echo "Failed to create tarball"; exit 1; }
-
-echo "Packaged directory into: $tarball_name"
 
 # =========================================
 # TESTING ONLY

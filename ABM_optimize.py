@@ -160,7 +160,6 @@ def ABM(x):
 
     for i in range(3):
         
-        print(f"Running iteration {i}")
         # Run model
         with open(stdout_file_name, 'a') as stdout_file:
             with open(stderr_file_name, 'a') as stderr_file:
@@ -176,7 +175,6 @@ def ABM(x):
             print(f"Day 3: collagen={temp[144][8]} activated={temp[144][16]} fibroblasts={temp[144][17]}")
             print(f"Day 6: collagen={temp[288][8]} activated={temp[288][16]} fibroblasts={temp[288][17]}")
 
-            print(f"Performing iteration {i}")
             # # Day 3
             Y[0][i] = error(FIBROBLASTS, float(temp[144][16]) + float(temp[144][17]))         # Fibroblasts
             Y[1][i] = error(DAY_3_COLLAGEN, float(temp[144][8]))   # Collagen
@@ -242,8 +240,6 @@ def ABM(x):
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
-
-        print(f"Obtained Y: {Y}")
 
         # Dynamically create string based on the number of parameters
         format_str = formatted_string(Nfeval, x, Y)     

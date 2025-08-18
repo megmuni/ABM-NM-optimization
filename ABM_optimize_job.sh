@@ -54,9 +54,39 @@ for arg in "$@"; do
     esac
 done
 
+
+n=""
+method=""
+while [[ $# -gt 0 ]]; do
+	case $1 in
+		--n=*)
+			n="${1#*=}"
+			shift
+			;;
+		--n)
+			n="$2"
+			shift 2
+			;;
+		--method=*)
+			method="${1#*=}"
+			shift
+			;;
+		--method)
+			method="$2"
+			shift 2
+			;;
+		*)
+			shift
+			;;
+	esac
+done
+
 n=${n:-5}
 method=${method:-"Random Forest"}
 method_safe=$(echo "$method" | tr ' ' '_') # replace spaces with underscores for safe filename
+
+echo "Method: $method_safe"
+echo "Parametres: $n"
 
 current_date=$(date +"%Y-%m-%d_%H-%M-%S")
 tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"

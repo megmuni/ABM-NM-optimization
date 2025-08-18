@@ -208,13 +208,17 @@ def ABM(x):
         if args.save_snapshots:
             snapshot_data_day_3 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 3)
             snapshot_data_day_6 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 6)
-            with open('output/snapshots/day_snapshots.csv', 'a') as snapshots_file:
-                writer = csv.DictWriter(snapshots_file, fieldnames=snapshot_data_day_3.keys())
-                # Write header only if file is empty
+            snapshot_data_day_3_with_nfeval = dict(snapshot_data_day_3)
+            snapshot_data_day_3_with_nfeval['nfeval'] = Nfeval
+            snapshot_data_day_6_with_nfeval = dict(snapshot_data_day_6)
+            snapshot_data_day_6_with_nfeval['nfeval'] = Nfeval
+            fieldnames = list(snapshot_data_day_3.keys()) + ['nfeval']
+            with open('output/snapshots/day_snapshots.csv', 'a', newline='') as snapshots_file:
+                writer = csv.DictWriter(snapshots_file, fieldnames=fieldnames)
                 if snapshots_file.tell() == 0:
                     writer.writeheader()
-                writer.writerow(snapshot_data_day_3)
-                writer.writerow(snapshot_data_day_6)
+                writer.writerow(snapshot_data_day_3_with_nfeval)
+                writer.writerow(snapshot_data_day_6_with_nfeval)
             if Nfeval % SNAPSHOT_INTERVAL == 0:
                 shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}.csv')
 
@@ -317,6 +321,7 @@ open(stderr_file_name, 'w').close()
 
 # Create snapshots file
 if args.save_snapshots:
+    os.makedirs('output/snapshots', exist_ok=True)
     open('output/snapshots/day_snapshots.csv', 'w').close()
     os.makedirs('output/snapshots/biomarker_csvs', exist_ok=True)
 

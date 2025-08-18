@@ -210,6 +210,9 @@ def ABM(x):
             snapshot_data_day_6 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 6)
             with open('output/snapshots/day_snapshots.csv', 'a') as snapshots_file:
                 writer = csv.DictWriter(snapshots_file, fieldnames=snapshot_data_day_3.keys())
+                # Write header only if file is empty
+                if snapshots_file.tell() == 0:
+                    writer.writeheader()
                 writer.writerow(snapshot_data_day_3)
                 writer.writerow(snapshot_data_day_6)
             if Nfeval % SNAPSHOT_INTERVAL == 0:

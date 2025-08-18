@@ -1,4 +1,6 @@
 from scipy.optimize import minimize
+import shutil
+import os
 import numpy as np
 import pandas as pd
 import subprocess
@@ -11,6 +13,8 @@ import argparse
 FIBROBLASTS = 90
 DAY_3_COLLAGEN = 64736.8
 DAY_6_COLLAGEN = 42785
+SNAPSHOT_INTERVAL = 5
+TICKS_PER_DAY = 44
 # ==========================
 
 # ==========================
@@ -24,6 +28,7 @@ parser = argparse.ArgumentParser(description='Run ABM optimization.')
 
 parser.add_argument('--n', type=int, default=5, help='Number of parameters to optimize')
 parser.add_argument('--method', type=str, default='Random Forest', help='Method to use for parameter importance ranking')
+parser.add_argument('--save-snapshots', type=bool, default=False, help='Save snapshots of the biomarker values')
 parser.add_argument('--test', type=bool, default=False, help='Test mode (True/False)')
 
 args = parser.parse_args() 
@@ -126,6 +131,19 @@ def extract_n_params(method="Random Forest", n=5) -> list:
     
     return param_nums
 
+def extract_row_as_dict(csv_path: str, row_index: int) -> dict[str, float]:
+    """
+    Read the OutputBiomarkers.csv file which is the output of a single run
+    of the ABM simulation.
+    Extract all biomarker values from the specified row.
+    """
+    with open(csv_path, 'r') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for i, row in enumerate(reader):
+            if i == row_index:
+                return {k: float(v) for k, v in row.items()}
+    return {}
+
 def test_ABM(x):
     """
     Unused, but kept for testing purposes.
@@ -182,10 +200,20 @@ def ABM(x):
             # # Day 6
             Y[0][i] = error(FIBROBLASTS, float(temp[288][16]) + float(temp[288][17]))         # Fibroblasts
             Y[1][i] = error(DAY_6_COLLAGEN, float(temp[288][8]))   # Collagen
-            
+
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
+
+        if args.save_snapshots:
+            snapshot_data_day_3 = extract_row_as_dict('output/Output_Biomarkers.csv', 144)
+            snapshot_data_day_6 = extract_row_as_dict('output/Output_Biomarkers.csv', 288)
+            with open('output/snapshots/snapshots.csv', 'a') as snapshots_file:
+                writer = csv.DictWriter(snapshots_file, fieldnames=snapshot_data_day_3.keys())
+                writer.writerow(snapshot_data_day_3)
+                writer.writerow(snapshot_data_day_6)
+            if Nfeval % SNAPSHOT_INTERVAL == 0:
+                shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}.csv')
 
         # Run model
         with open(stdout_file_name, 'a') as stdout_file:
@@ -243,7 +271,6 @@ def ABM(x):
 
         # Dynamically create string based on the number of parameters
         format_str = formatted_string(Nfeval, x, Y)     
-        #print('{0:4d}   {1: 3.6f}  {2: 3.6f}  {3: 3.6f} {4: 3.6f}  {5: 3.6f}    {6: 3.6f}'.format(Nfeval, x[0], x[1], x[2], x[3], x[4], np.sum(Y)))
         print(format_str)
         Nfeval += 1
 
@@ -285,12 +312,16 @@ stderr_file_name = "output/SensitivityAnalysis/stderr.txt"
 open(stdout_file_name, 'w').close()
 open(stderr_file_name, 'w').close()
 
+# Create snapshots file
+if args.save_snapshots:
+    open('output/snapshots/day_snapshots.csv', 'w').close()
+    os.makedirs('output/snapshots/biomarker_csvs', exist_ok=True)
+
 # # # Run optimization # # #
 Nfeval = 1
 
 # Construct an initial simplex
 selected_init = construct_simplex(bounds, params)
-
 
 result = minimize(
     ABM if not args.test else test_ABM, 

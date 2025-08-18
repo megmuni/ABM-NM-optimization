@@ -11,7 +11,6 @@ slurm-*
 
 # need to put your own files in these
 bin/* 
-configFiles/*
 
 # will be populated by the script
 output/SensitivityAnalysis/*

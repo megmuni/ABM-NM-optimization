@@ -1,0 +1,18 @@
+Number_of_baseline_chemicals_to_be_inputed: 6
+Baseline_TNF: 100 
+Baseline_TGF: 30000
+Baseline_FGF: 100
+Baseline_IL6: 100
+Baseline_IL8: 100
+Baseline_IL10: 100
+Number_of_cell_to_be_inputed: 1
+Immortalized_Fibroblast_Cells: 0
+1%HA_(mL): 0.275
+1%Gtn_(mL): 0.025
+PEGDA_(mL): 0.05
+D: 20.0
+HL: 3600
+D_IL6: 13.5
+D_TGF: 13.0
+D_TNF: 15.0
+

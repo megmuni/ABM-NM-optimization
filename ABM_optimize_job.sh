@@ -86,7 +86,7 @@ method=${method:-"Random Forest"}
 method_safe=$(echo "$method" | tr ' ' '_') # replace spaces with underscores for safe filename
 
 echo "Method: $method_safe"
-echo "Parametres: $n"
+echo "Parameters: $n"
 
 current_date=$(date +"%Y-%m-%d_%H-%M-%S")
 tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"

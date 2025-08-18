@@ -190,25 +190,25 @@ def ABM(x):
             temp = csv.reader(f)
             temp = list(temp)
 
-            print(f"Day 3: collagen={temp[144][8]} activated={temp[144][16]} fibroblasts={temp[144][17]}")
-            print(f"Day 6: collagen={temp[288][8]} activated={temp[288][16]} fibroblasts={temp[288][17]}")
+            print(f"Day 3: collagen={temp[TICKS_PER_DAY * 3][8]} activated={temp[TICKS_PER_DAY * 3][16]} fibroblasts={temp[TICKS_PER_DAY * 3][17]}")
+            print(f"Day 6: collagen={temp[TICKS_PER_DAY * 6][8]} activated={temp[TICKS_PER_DAY * 6][16]} fibroblasts={temp[TICKS_PER_DAY * 6][17]}")
 
             # # Day 3
-            Y[0][i] = error(FIBROBLASTS, float(temp[144][16]) + float(temp[144][17]))         # Fibroblasts
-            Y[1][i] = error(DAY_3_COLLAGEN, float(temp[144][8]))   # Collagen
+            Y[0][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 3][16]) + float(temp[TICKS_PER_DAY * 3][17]))         # Fibroblasts
+            Y[1][i] = error(DAY_3_COLLAGEN, float(temp[TICKS_PER_DAY * 3][8]))   # Collagen
             
             # # Day 6
-            Y[0][i] = error(FIBROBLASTS, float(temp[288][16]) + float(temp[288][17]))         # Fibroblasts
-            Y[1][i] = error(DAY_6_COLLAGEN, float(temp[288][8]))   # Collagen
+            Y[0][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 6][16]) + float(temp[TICKS_PER_DAY * 6][17]))         # Fibroblasts
+            Y[1][i] = error(DAY_6_COLLAGEN, float(temp[TICKS_PER_DAY * 6][8]))   # Collagen
 
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
 
         if args.save_snapshots:
-            snapshot_data_day_3 = extract_row_as_dict('output/Output_Biomarkers.csv', 144)
-            snapshot_data_day_6 = extract_row_as_dict('output/Output_Biomarkers.csv', 288)
-            with open('output/snapshots/snapshots.csv', 'a') as snapshots_file:
+            snapshot_data_day_3 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 3)
+            snapshot_data_day_6 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 6)
+            with open('output/snapshots/day_snapshots.csv', 'a') as snapshots_file:
                 writer = csv.DictWriter(snapshots_file, fieldnames=snapshot_data_day_3.keys())
                 writer.writerow(snapshot_data_day_3)
                 writer.writerow(snapshot_data_day_6)
@@ -227,16 +227,16 @@ def ABM(x):
             temp = csv.reader(f)
             temp = list(temp)
 
-            print(f"Day 3: collagen={temp[144][8]} activated={temp[144][16]} fibroblasts={temp[144][17]}")
-            print(f"Day 6: collagen={temp[288][8]} activated={temp[288][16]} fibroblasts={temp[288][17]}")
+            print(f"Day 3: collagen={temp[TICKS_PER_DAY * 3][8]} activated={temp[TICKS_PER_DAY * 3][16]} fibroblasts={temp[TICKS_PER_DAY * 3][17]}")
+            print(f"Day 6: collagen={temp[TICKS_PER_DAY * 6][8]} activated={temp[TICKS_PER_DAY * 6][16]} fibroblasts={temp[TICKS_PER_DAY * 6][17]}")
 
             # Day 3
-            Y[2][i] = error(FIBROBLASTS, float(temp[144][16]) + float(temp[144][17]))  # Fibroblasts
-            Y[3][i] = error(DAY_3_COLLAGEN, float(temp[144][8]))  # Collagen
+            Y[2][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 3][16]) + float(temp[TICKS_PER_DAY * 3][17]))  # Fibroblasts
+            Y[3][i] = error(DAY_3_COLLAGEN, float(temp[TICKS_PER_DAY * 3][8]))  # Collagen
 
             # Day 6
-            Y[2][i] = error(FIBROBLASTS, float(temp[288][16]) + float(temp[288][17]))  # Fibroblasts
-            Y[3][i] = error(DAY_6_COLLAGEN, float(temp[288][8]))  # Collagen
+            Y[2][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 6][16]) + float(temp[TICKS_PER_DAY * 6][17]))  # Fibroblasts
+            Y[3][i] = error(DAY_6_COLLAGEN, float(temp[TICKS_PER_DAY * 6][8]))  # Collagen
             
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
@@ -254,16 +254,16 @@ def ABM(x):
             temp = csv.reader(f)
             temp = list(temp)
 
-            print(f"Day 3: collagen={temp[144][8]} activated={temp[144][16]} fibroblasts={temp[144][17]}")
-            print(f"Day 6: collagen={temp[288][8]} activated={temp[288][16]} fibroblasts={temp[288][17]}")
+            print(f"Day 3: collagen={temp[TICKS_PER_DAY * 3][8]} activated={temp[TICKS_PER_DAY * 3][16]} fibroblasts={temp[TICKS_PER_DAY * 3][17]}")
+            print(f"Day 6: collagen={temp[TICKS_PER_DAY * 6][8]} activated={temp[TICKS_PER_DAY * 6][16]} fibroblasts={temp[TICKS_PER_DAY * 6][17]}")
 
             # Day 3
-            Y[4][i] = error(FIBROBLASTS, float(temp[144][16]) + float(temp[144][17]))  # Fibroblasts
-            Y[5][i] = error(DAY_3_COLLAGEN, float(temp[144][8]))  # Collagen
+            Y[4][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 3][16]) + float(temp[TICKS_PER_DAY * 3][17]))  # Fibroblasts
+            Y[5][i] = error(DAY_3_COLLAGEN, float(temp[TICKS_PER_DAY * 3][8]))  # Collagen
 
             # Day 6
-            Y[4][i] = error(FIBROBLASTS, float(temp[288][16]) + float(temp[288][17]))  # Fibroblasts
-            Y[5][i] = error(DAY_6_COLLAGEN, float(temp[288][8]))  # Collagen
+            Y[4][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 6][16]) + float(temp[TICKS_PER_DAY * 6][17]))  # Fibroblasts
+            Y[5][i] = error(DAY_6_COLLAGEN, float(temp[TICKS_PER_DAY * 6][8]))  # Collagen
                     
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts

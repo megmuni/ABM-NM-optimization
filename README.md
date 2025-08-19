@@ -74,10 +74,10 @@ sbatch --mail-user $EMAIL ABM_optimize_job.sh --n [NUMBER HERE] --method [METHOD
 
 ## Saving Snapshots
 
-To enable saving biomarker snapshots, use the `--save-snapshots` flag (do not provide a value):
+To enable saving biomarker snapshots, use the `--snapshots` flag (do not provide a value):
 
 ```bash
-sbatch --mail-user $EMAIL ABM_optimize_job.sh --n [NUMBER HERE] --save-snapshots
+sbatch --mail-user $EMAIL ABM_optimize_job.sh --n [NUMBER HERE] --snapshots
 ```
 
 ## Testing

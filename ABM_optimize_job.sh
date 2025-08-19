@@ -89,7 +89,7 @@ echo "Method: $method_safe"
 echo "Parametres: $n"
 
 current_date=$(date +"%Y-%m-%d_%H-%M-%S")
-tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
+tarball_name="$SLURM_TMPDIR/param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
 
 # trap to package directory on any exit (success or failure)
 # Function to package directory on any exit (success or failure)

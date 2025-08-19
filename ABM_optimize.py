@@ -29,13 +29,13 @@ parser = argparse.ArgumentParser(description='Run ABM optimization.')
 
 parser.add_argument('--n', type=int, default=5, help='Number of parameters to optimize')
 parser.add_argument('--method', type=str, default='Random Forest', help='Method to use for parameter importance ranking')
-parser.add_argument('--save-snapshots', action='store_true', help='Save snapshots of the biomarker values')
+parser.add_argument('--snapshots', action='store_true', help='Save snapshots of the biomarker values')
 parser.add_argument('--test', action='store_true', help='Test mode (True/False)')
 
 args = parser.parse_args() 
 n = args.n 
 method = args.method
-print(f"Running optimization with method: {method}, n: {n}, save_snapshots: {args.save_snapshots}, test: {args.test}")
+print(f"Running optimization with method: {method}, n: {n}, snapshots: {args.snapshots}, test: {args.test}")
 
 # ==========================
 # ==========================
@@ -229,7 +229,7 @@ def ABM(x):
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
 
-        if args.save_snapshots:
+        if args.snapshots:
             save_snapshot(Nfeval, 'config_Scaffold_GH2')
             if Nfeval % SNAPSHOT_INTERVAL == 0:
                 shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_.csv')
@@ -261,7 +261,7 @@ def ABM(x):
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
 
-        if args.save_snapshots:
+        if args.snapshots:
             save_snapshot(Nfeval, 'config_Scaffold_GH5')
             if Nfeval % SNAPSHOT_INTERVAL == 0:
                 shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_.csv')
@@ -293,7 +293,7 @@ def ABM(x):
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
 
-        if args.save_snapshots:
+        if args.snapshots:
             save_snapshot(Nfeval, 'config_Scaffold_GH10')
             if Nfeval % SNAPSHOT_INTERVAL == 0:
                 shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_.csv')
@@ -342,7 +342,7 @@ open(stdout_file_name, 'w').close()
 open(stderr_file_name, 'w').close()
 
 # Create snapshots file
-if args.save_snapshots:
+if args.snapshots:
     os.makedirs('output/snapshots', exist_ok=True)
     open('output/snapshots/day_snapshots.csv', 'w').close()
     os.makedirs('output/snapshots/biomarker_csvs', exist_ok=True)

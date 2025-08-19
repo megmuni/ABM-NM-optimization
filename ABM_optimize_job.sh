@@ -92,7 +92,12 @@ current_date=$(date +"%Y-%m-%d_%H-%M-%S")
 tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
 
 # trap to package directory on any exit (success or failure)
-tar -czf "$tarball_name" . || { echo "Failed to create tarball"; exit 1; }
+# Function to package directory on any exit (success or failure)
+package_directory() {
+    echo "Packaging directory into tarball: $tarball_name"
+    tar -czf "$tarball_name" . || echo "Failed to create tarball"
+}
+trap package_directory EXIT
 
 echo "SLURM_TMPDIR: $SLURM_TMPDIR"
 df -h $SLURM_TMPDIR || { echo "Failed to check disk space"; exit 1; }

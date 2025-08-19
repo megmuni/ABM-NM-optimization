@@ -145,6 +145,8 @@ export OMP_NESTED=TRUE
 nvidia-smi || { echo "Failed to check CUDA device"; exit 1; }
 
 echo "Running Python script..."
+echo "Arguments: $@"
+
 python ABM_optimize.py "$@" > output/output.txt 2>&1 || { echo "Python script failed"; exit 1; }
 
 # =========================================

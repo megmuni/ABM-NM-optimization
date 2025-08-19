@@ -44,16 +44,45 @@ module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || { echo "Module load f
 # fi
 # =========================================
 
-# PACKAGE DIRECTORY AT FAILURE OR SUCCESS
+echo "SLURM_TMPDIR: $SLURM_TMPDIR"
+df -h $SLURM_TMPDIR || { echo "Failed to check disk space"; exit 1; }
+ls -lah $SLURM_TMPDIR
+
+# =============================
+# COPY FILES TO SLURM_TMPDIR AND SETUP TRAP
+# =============================
+
+mkdir -p "$SLURM_SUBMIT_DIR/finished_runs"
+mkdir -p "$SLURM_SUBMIT_DIR/slurm_logs"
+
+# Trap function to package and copy results, capturing exit code
+function package_dir() {
+	exit_code=$?
+	echo "Packaging directory (trap)... (exit code: $exit_code)"
+	cd "$SLURM_TMPDIR"
+	# Copy the slurm log to the tarball
+	if [[ -n "$SLURM_JOB_NAME" && -n "$SLURM_JOB_ID" ]]; then
+		cp "$SLURM_SUBMIT_DIR/slurm_logs/${SLURM_JOB_NAME}_${SLURM_JOB_ID}.out" . 2>/dev/null
+		cp "$SLURM_SUBMIT_DIR/slurm_logs/${SLURM_JOB_NAME}_${SLURM_JOB_ID}.err" . 2>/dev/null
+	fi
+	tar --exclude="env" --exclude="./env" --exclude="$SLURM_SUBMIT_DIR/finished_runs" -czf "$SLURM_SUBMIT_DIR/finished_runs/$tarball_name" .
+	echo "Packaged directory into: $SLURM_SUBMIT_DIR/finished_runs/$tarball_name"
+	exit $exit_code
+}
+
+trap 'package_dir' EXIT
+
+echo "Copying files to SLURM_TMPDIR..."
+rsync -av --exclude='slurm_logs' --exclude='finished_runs' "$SLURM_SUBMIT_DIR/" "$SLURM_TMPDIR/" || { echo "Failed to copy files"; exit 1; }
+cd "$SLURM_TMPDIR" || { echo "Failed to change to SLURM_TMPDIR"; exit 1; }
 
 # extract arguments for naming output file
 for arg in "$@"; do
-    case $arg in
-        --n=*) n="${arg#*=}" ;;
-        --method=*) method="${arg#*=}" ;;
-    esac
+	case $arg in
+		--n=*) n="${arg#*=}" ;;
+		--method=*) method="${arg#*=}" ;;
+	esac
 done
-
 
 n=""
 method=""
@@ -90,9 +119,6 @@ echo "Parameters: $n"
 
 current_date=$(date +"%Y-%m-%d_%H-%M-%S")
 tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
-
-# trap to package directory on any exit (success or failure)
-trap 'echo "Packaging directory (trap)..."; tar -czf "$tarball_name" . && echo "Packaged directory into: $tarball_name"' EXIT
 
 echo "SLURM_TMPDIR: $SLURM_TMPDIR"
 df -h $SLURM_TMPDIR || { echo "Failed to check disk space"; exit 1; }

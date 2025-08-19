@@ -1,5 +1,4 @@
 from scipy.optimize import minimize
-from typing import Any
 import shutil
 import os
 import numpy as np
@@ -14,7 +13,7 @@ import argparse
 FIBROBLASTS = 90
 DAY_3_COLLAGEN = 64736.8
 DAY_6_COLLAGEN = 42785
-SNAPSHOT_INTERVAL = 50
+SNAPSHOT_INTERVAL = 5
 TICKS_PER_DAY = 44
 # ==========================
 
@@ -29,14 +28,12 @@ parser = argparse.ArgumentParser(description='Run ABM optimization.')
 
 parser.add_argument('--n', type=int, default=5, help='Number of parameters to optimize')
 parser.add_argument('--method', type=str, default='Random Forest', help='Method to use for parameter importance ranking')
-parser.add_argument('--snapshots', action='store_true', help='Save snapshots of the biomarker values')
-parser.add_argument('--test', action='store_true', help='Test mode (True/False)')
+parser.add_argument('--save-snapshots', type=bool, default=False, help='Save snapshots of the biomarker values')
+parser.add_argument('--test', type=bool, default=False, help='Test mode (True/False)')
 
 args = parser.parse_args() 
 n = args.n 
 method = args.method
-print(f"Running optimization with method: {method}, n: {n}, snapshots: {args.snapshots}, test: {args.test}")
-
 # ==========================
 # ==========================
 
@@ -134,28 +131,7 @@ def extract_n_params(method="Random Forest", n=5) -> list:
     
     return param_nums
 
-def save_snapshot(nfeval: int, config: str):
-    """
-    Save snapshot for this configuration to a CSV file.
-    """
-    snapshot_data_day_3 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 3)
-    snapshot_data_day_6 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 6)
-    snapshot_data_day_3_with_nfeval = dict(snapshot_data_day_3)
-    snapshot_data_day_3_with_nfeval['nfeval'] = nfeval
-    snapshot_data_day_3_with_nfeval['config'] = config
-
-    snapshot_data_day_6_with_nfeval = dict(snapshot_data_day_6)
-    snapshot_data_day_6_with_nfeval['nfeval'] = nfeval
-    snapshot_data_day_6_with_nfeval['config'] = config
-    fieldnames = list(snapshot_data_day_3.keys()) + ['nfeval'] + ['config']
-    with open('output/snapshots/day_snapshots.csv', 'a', newline='') as snapshots_file:
-        writer = csv.DictWriter(snapshots_file, fieldnames=fieldnames)
-        if snapshots_file.tell() == 0:
-            writer.writeheader()
-        writer.writerow(snapshot_data_day_3_with_nfeval)
-        writer.writerow(snapshot_data_day_6_with_nfeval)
-
-def extract_row_as_dict(csv_path: str, row_index: int) -> dict[str, Any]:
+def extract_row_as_dict(csv_path: str, row_index: int) -> dict[str, float]:
     """
     Read the OutputBiomarkers.csv file which is the output of a single run
     of the ABM simulation.
@@ -229,10 +205,22 @@ def ABM(x):
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
 
-        if args.snapshots:
-            save_snapshot(Nfeval, 'config_Scaffold_GH2')
+        if args.save_snapshots:
+            snapshot_data_day_3 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 3)
+            snapshot_data_day_6 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 6)
+            snapshot_data_day_3_with_nfeval = dict(snapshot_data_day_3)
+            snapshot_data_day_3_with_nfeval['nfeval'] = Nfeval
+            snapshot_data_day_6_with_nfeval = dict(snapshot_data_day_6)
+            snapshot_data_day_6_with_nfeval['nfeval'] = Nfeval
+            fieldnames = list(snapshot_data_day_3.keys()) + ['nfeval']
+            with open('output/snapshots/day_snapshots.csv', 'a', newline='') as snapshots_file:
+                writer = csv.DictWriter(snapshots_file, fieldnames=fieldnames)
+                if snapshots_file.tell() == 0:
+                    writer.writeheader()
+                writer.writerow(snapshot_data_day_3_with_nfeval)
+                writer.writerow(snapshot_data_day_6_with_nfeval)
             if Nfeval % SNAPSHOT_INTERVAL == 0:
-                shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_.csv')
+                shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}.csv')
 
         # Run model
         with open(stdout_file_name, 'a') as stdout_file:
@@ -261,11 +249,6 @@ def ABM(x):
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
 
-        if args.snapshots:
-            save_snapshot(Nfeval, 'config_Scaffold_GH5')
-            if Nfeval % SNAPSHOT_INTERVAL == 0:
-                shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_.csv')
-
         # Run model
         with open(stdout_file_name, 'a') as stdout_file:
             with open(stderr_file_name, 'a') as stderr_file:
@@ -292,11 +275,6 @@ def ABM(x):
             # Validation
             # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
             # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
-
-        if args.snapshots:
-            save_snapshot(Nfeval, 'config_Scaffold_GH10')
-            if Nfeval % SNAPSHOT_INTERVAL == 0:
-                shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_.csv')
 
         # Dynamically create string based on the number of parameters
         format_str = formatted_string(Nfeval, x, Y)     
@@ -342,7 +320,7 @@ open(stdout_file_name, 'w').close()
 open(stderr_file_name, 'w').close()
 
 # Create snapshots file
-if args.snapshots:
+if args.save_snapshots:
     os.makedirs('output/snapshots', exist_ok=True)
     open('output/snapshots/day_snapshots.csv', 'w').close()
     os.makedirs('output/snapshots/biomarker_csvs', exist_ok=True)

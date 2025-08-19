@@ -86,18 +86,13 @@ method=${method:-"Random Forest"}
 method_safe=$(echo "$method" | tr ' ' '_') # replace spaces with underscores for safe filename
 
 echo "Method: $method_safe"
-echo "Parametres: $n"
+echo "Parameters: $n"
 
 current_date=$(date +"%Y-%m-%d_%H-%M-%S")
-tarball_name="$SLURM_TMPDIR/param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
+tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
 
 # trap to package directory on any exit (success or failure)
-# Function to package directory on any exit (success or failure)
-package_directory() {
-    echo "Packaging directory into tarball: $tarball_name"
-    tar -czf "$tarball_name" . || echo "Failed to create tarball"
-}
-trap package_directory EXIT
+trap 'echo "Packaging directory (trap)..."; tar -czf "$tarball_name" . && echo "Packaged directory into: $tarball_name"' EXIT
 
 echo "SLURM_TMPDIR: $SLURM_TMPDIR"
 df -h $SLURM_TMPDIR || { echo "Failed to check disk space"; exit 1; }

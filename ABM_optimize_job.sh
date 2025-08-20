@@ -3,7 +3,7 @@
 #SBATCH --time=09:00:00
 #SBATCH --cpus-per-task=32
 #SBATCH --gpus-per-node=2
-#SBATCH --mem=64000M
+#SBATCH --mem=120000M
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --mail-type=ALL
 

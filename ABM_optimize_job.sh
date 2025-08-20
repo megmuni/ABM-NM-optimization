@@ -46,6 +46,8 @@ module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || { echo "Module load f
 
 # PACKAGE DIRECTORY AT FAILURE OR SUCCESS
 
+original_args=("$@")
+
 # extract arguments for naming output file
 for arg in "$@"; do
     case $arg in
@@ -145,9 +147,9 @@ export OMP_NESTED=TRUE
 nvidia-smi || { echo "Failed to check CUDA device"; exit 1; }
 
 echo "Running Python script..."
-echo "Arguments: $@"
+echo "Arguments: $original_args"
 
-python ABM_optimize.py "$@" > output/output.txt 2>&1 || { echo "Python script failed"; exit 1; }
+python ABM_optimize.py "$original_args" > output/output.txt 2>&1 || { echo "Python script failed"; exit 1; }
 
 # =========================================
 # TESTING ONLY

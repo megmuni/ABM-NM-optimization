@@ -73,28 +73,4 @@ sbatch --mail-user $EMAIL ABM_optimize_job.sh --n [NUMBER HERE] --method [METHOD
 
 ## Testing
 
-It can be time-consuming to run the ABM_optimize_job.sh script as a job. 
-
-### Testing dimension fitting
-This option can be used to test that the `ABM_optimize.py` script correctly passes inputs from each function to the other.
-
-Inside of ABM_optimize_job.sh, you can uncomment out the lines in the blocks marked as TESTING to run the script in your scratch directory (edit the line to change it to another directory if you want).
-
-Note that if you do this, you should ensure that you run the script with --test True to use the test_ABM method rather than the actual ABM method (which is resource intensive).
-
-```bash
-./ABM_optimize_job.sh --test True
-```
-
-### Testing `testRun`
-`testRun` relies on an available CUDA device, which is only available on the compute clusters. 
-
-As a result, this script attempts to run a single iteration of `testRun`, requesting fewer resources than `ABM_optimize.py`. However, it must still be submitted as a job.
-
-```bash
-EMAIL=[your email for notifs]
-sbatch ABM_light_test.sh
-```
-
-You can also run the job in interactive mode with `salloc`, see documentation here: https://slurm.schedmd.com/salloc.html
-
+TO BE UPDATED

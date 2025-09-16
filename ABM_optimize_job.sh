@@ -2,7 +2,7 @@
 #SBATCH --account=def-nicoleli
 #SBATCH --time=09:00:00
 #SBATCH --cpus-per-task=32
-#SBATCH --gpus-per-node=2
+#SBATCH --gpus=h100:2
 #SBATCH --mem=120000M
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --mail-type=ALL

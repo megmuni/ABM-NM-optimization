@@ -14,3 +14,5 @@ bin/*
 
 # will be populated by the script
 output/SensitivityAnalysis/*
+
+__pycache__/

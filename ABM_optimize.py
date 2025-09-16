@@ -1,5 +1,6 @@
 from scipy.optimize import minimize
 from typing import Any
+from pathlib import Path
 import shutil
 import os
 import numpy as np
@@ -30,13 +31,57 @@ parser = argparse.ArgumentParser(description='Run ABM optimization.')
 parser.add_argument('--n', type=int, default=5, help='Number of parameters to optimize')
 parser.add_argument('--method', type=str, default='Random Forest', help='Method to use for parameter importance ranking')
 parser.add_argument('--snapshots', type=bool, default=False, help='Save snapshots of the biomarker values')
-parser.add_argument('--test', type=bool, default=False, help='Test mode (True/False)')
 
 args = parser.parse_args() 
 n = args.n 
 method = args.method
 # ==========================
 # ==========================
+
+
+def small_scaffold_adjustment_cells(value: float) -> float:
+    """
+    Adjusts the value for the small scaffold experimental data.
+    The adjustment is based on the formula:
+    ((0.6)^3 / 1000 / 0.3 ) * value
+    """
+    return ((0.6 ** 3) / 1000 / 0.3) * value
+
+def small_scaffold_adjustment_collagen(value: float) -> float:
+    """
+    Adjusts the value for the small scaffold experimental data.
+    The adjustment is based on the formula:
+    ((0.6)^3 / 300 ) * value * 10^6
+    """
+    return ((0.6 ** 3) / 300) * value * 10 ** 6
+
+def extract_small_scaffold_experimental(file_path: Path) -> pd.DataFrame:
+    """
+    Extracts experimental data from CSV file corresponding to the small scaffold.
+    """
+    df = pd.read_csv(file_path)
+    df.columns = [c.strip() for c in df.columns]
+
+    # Calculate average for each config (GH2, GH5, GH10)
+    df["picogreen_cells"] = df["picogreen_cells"].astype(float)
+    df["sircol_collagen_ug"] = df["sircol_collagen_ug"].astype(float)
+    df["bradford_protein_ug_per_ml"] = df["bradford_protein_ug_per_ml"].astype(float)
+
+    # Add a column for live cells
+    df["live_cells"] = df["picogreen_cells"] * (df["cell_viability"])
+
+    # Calculate the average values for each group and time point
+    averages = df.groupby(["group", "time_hour"]).mean().reset_index()
+
+    # Apply scaffold adjustment to the mean live_cells
+    averages["small_scaffold_cell_avg"] = averages["live_cells"].apply(small_scaffold_adjustment_cells)
+
+    # Collagen adjustment (convert from ug to pg)
+    averages["small_scaffold_collagen_pg"] = averages["sircol_collagen_ug"].apply(
+        lambda x: small_scaffold_adjustment_collagen(x)
+    )
+    
+    return averages
 
 def error(expected, actual):
     """
@@ -166,28 +211,54 @@ def save_snapshot(nfeval: int, config: str):
         writer.writerow(snapshot_data_day_3_with_nfeval)
         writer.writerow(snapshot_data_day_6_with_nfeval)
 
-def test_ABM(x):
+def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataFrame, i: int, num_iters: int = 3):
     """
-    Unused, but kept for testing purposes.
-    The ABM function is very resource intensive, so this
-    function allows for a quick test for size and shape matching.
-    Test function to check if the parameters are being passed correctly.
+    Run the ABM simulation with the specified scaffold configuration file.
     """
-    
-    global Nfeval
-    sam = np.asarray(temp_sample)
-    for idx, param in enumerate(params):
-        sam[param] = x[idx]
+    # Collect errors for each run
+    fibroblast_day3_errors = []
+    collagen_day3_errors = []
+    fibroblast_day6_errors = []
+    collagen_day6_errors = []
 
-    format_str = formatted_string(Nfeval, x, np.zeros((6,4)))     
-    print(format_str)
-        
-    return 0
+    for iter in range(num_iters):
+        print(f"Running iteration {iter + 1} for config {config_file}")
+        with open(stdout_file_name, 'a') as stdout_file:
+            with open(stderr_file_name, 'a') as stderr_file:
+                stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
+                stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
+                subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , config_file, "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
+
+        # After each run, read output and calculate error
+        with open('output/Output_Biomarkers.csv', 'rt') as f:
+            temp = csv.reader(f)
+            temp = list(temp)
+
+            group_name = Path(config_file).stem
+            day3_fibroblasts = experimental_df.loc[(group_name, 72), 'small_scaffold_cell_avg']
+            day6_fibroblasts = experimental_df.loc[(group_name, 144), 'small_scaffold_cell_avg']
+            day3_collagen = experimental_df.loc[(group_name, 72), 'small_scaffold_collagen_pg']
+            day6_collagen = experimental_df.loc[(group_name, 144), 'small_scaffold_collagen_pg']
+
+            print(f"Day 3: collagen={temp[TICKS_PER_DAY * 3][8]} activated={temp[TICKS_PER_DAY * 3][16]} fibroblasts={temp[TICKS_PER_DAY * 3][17]}")
+            print(f"Day 6: collagen={temp[TICKS_PER_DAY * 6][8]} activated={temp[TICKS_PER_DAY * 6][16]} fibroblasts={temp[TICKS_PER_DAY * 6][17]}")
+
+            fibroblast_day3_errors.append(error(day3_fibroblasts, float(temp[TICKS_PER_DAY * 3][16]) + float(temp[TICKS_PER_DAY * 3][17])))
+            collagen_day3_errors.append(error(day3_collagen, float(temp[TICKS_PER_DAY * 3][8])))
+            fibroblast_day6_errors.append(error(day6_fibroblasts, float(temp[TICKS_PER_DAY * 6][16]) + float(temp[TICKS_PER_DAY * 6][17])))
+            collagen_day6_errors.append(error(day6_collagen, float(temp[TICKS_PER_DAY * 6][8])))
+
+    # Assign the mean error over all runs
+    Y[0][i] = np.mean(fibroblast_day3_errors)
+    Y[1][i] = np.mean(collagen_day3_errors)
+    Y[2][i] = np.mean(fibroblast_day6_errors)
+    Y[3][i] = np.mean(collagen_day6_errors)
 
 def ABM(x):
 
     global Nfeval
 
+    global experimental_df_indexed
     # Put sampled parameters into text files
     sam = np.asarray(temp_sample)
     for idx, param in enumerate(params):
@@ -196,103 +267,28 @@ def ABM(x):
     # Put sampled parameters into text files
     np.savetxt("Sample.txt", [sam], delimiter='\t')
 
-    Y = np.zeros((6,4))
+    Y = np.zeros((12, 4))
 
     for i in range(3):
         
-        # Run model
-        with open(stdout_file_name, 'a') as stdout_file:
-            with open(stderr_file_name, 'a') as stderr_file:
-                stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , "configFiles/config_Scaffold_GH2.txt", "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
-
-        # Save output
-        with open('output/Output_Biomarkers.csv', 'rt') as f:
-            temp = csv.reader(f)
-            temp = list(temp)
-
-            print(f"Day 3: collagen={temp[TICKS_PER_DAY * 3][8]} activated={temp[TICKS_PER_DAY * 3][16]} fibroblasts={temp[TICKS_PER_DAY * 3][17]}")
-            print(f"Day 6: collagen={temp[TICKS_PER_DAY * 6][8]} activated={temp[TICKS_PER_DAY * 6][16]} fibroblasts={temp[TICKS_PER_DAY * 6][17]}")
-
-            # # Day 3
-            Y[0][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 3][16]) + float(temp[TICKS_PER_DAY * 3][17]))         # Fibroblasts
-            Y[1][i] = error(DAY_3_COLLAGEN, float(temp[TICKS_PER_DAY * 3][8]))   # Collagen
-            
-            # # Day 6
-            Y[0][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 6][16]) + float(temp[TICKS_PER_DAY * 6][17]))         # Fibroblasts
-            Y[1][i] = error(DAY_6_COLLAGEN, float(temp[TICKS_PER_DAY * 6][8]))   # Collagen
-
-            # Validation
-            # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
-            # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
+        run_with_scaffold("configFiles/config_Scaffold_GH2.txt", Y, experimental_df_indexed, i)
 
         if args.snapshots:
             save_snapshot(Nfeval, "config_Scaffold_GH2")
             if Nfeval % SNAPSHOT_INTERVAL == 0:
                 shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH2.csv')
 
-        # Run model
-        with open(stdout_file_name, 'a') as stdout_file:
-            with open(stderr_file_name, 'a') as stderr_file:
-                stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , "configFiles/config_Scaffold_GH5.txt", "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
-
-        # Save output
-        with open('output/Output_Biomarkers.csv', 'rt') as f:
-            temp = csv.reader(f)
-            temp = list(temp)
-
-            print(f"Day 3: collagen={temp[TICKS_PER_DAY * 3][8]} activated={temp[TICKS_PER_DAY * 3][16]} fibroblasts={temp[TICKS_PER_DAY * 3][17]}")
-            print(f"Day 6: collagen={temp[TICKS_PER_DAY * 6][8]} activated={temp[TICKS_PER_DAY * 6][16]} fibroblasts={temp[TICKS_PER_DAY * 6][17]}")
-
-            # Day 3
-            Y[2][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 3][16]) + float(temp[TICKS_PER_DAY * 3][17]))  # Fibroblasts
-            Y[3][i] = error(DAY_3_COLLAGEN, float(temp[TICKS_PER_DAY * 3][8]))  # Collagen
-
-            # Day 6
-            Y[2][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 6][16]) + float(temp[TICKS_PER_DAY * 6][17]))  # Fibroblasts
-            Y[3][i] = error(DAY_6_COLLAGEN, float(temp[TICKS_PER_DAY * 6][8]))  # Collagen
-            
-            # Validation
-            # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
-            # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
+        run_with_scaffold("configFiles/config_Scaffold_GH5.txt", Y, experimental_df_indexed, i)
 
         if args.snapshots:
             save_snapshot(Nfeval, "config_Scaffold_GH5")
             if Nfeval % SNAPSHOT_INTERVAL == 0:
                 shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH5.csv')
 
-        # Run model
-        with open(stdout_file_name, 'a') as stdout_file:
-            with open(stderr_file_name, 'a') as stderr_file:
-                stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , "configFiles/config_Scaffold_GH10.txt", "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
-
-        # Save output
-        with open('output/Output_Biomarkers.csv', 'rt') as f:
-            temp = csv.reader(f)
-            temp = list(temp)
-
-            print(f"Day 3: collagen={temp[TICKS_PER_DAY * 3][8]} activated={temp[TICKS_PER_DAY * 3][16]} fibroblasts={temp[TICKS_PER_DAY * 3][17]}")
-            print(f"Day 6: collagen={temp[TICKS_PER_DAY * 6][8]} activated={temp[TICKS_PER_DAY * 6][16]} fibroblasts={temp[TICKS_PER_DAY * 6][17]}")
-
-            # Day 3
-            Y[4][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 3][16]) + float(temp[TICKS_PER_DAY * 3][17]))  # Fibroblasts
-            Y[5][i] = error(DAY_3_COLLAGEN, float(temp[TICKS_PER_DAY * 3][8]))  # Collagen
-
-            # Day 6
-            Y[4][i] = error(FIBROBLASTS, float(temp[TICKS_PER_DAY * 6][16]) + float(temp[TICKS_PER_DAY * 6][17]))  # Fibroblasts
-            Y[5][i] = error(DAY_6_COLLAGEN, float(temp[TICKS_PER_DAY * 6][8]))  # Collagen
-                    
-            # Validation
-            # Y[0][i] = ((float(temp[4][18]) + float(temp[4][21]) - 3981)/max(float(temp[4][18]) + float(temp[4][21]),3981))**2 # Fibroblasts
-            # Y[1][i] = ((float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]) - 80860)/max(float(temp[4][9]) + float(temp[4][10]) + float(temp[4][11]),80860))**2 # Collagen
+        run_with_scaffold("configFiles/config_Scaffold_GH10.txt", Y, experimental_df_indexed, i)
 
         if args.snapshots:
-            save_snapshot(Nfeval, "config_Scaffold_GH10")
+            save_snapshot(Nfeval, "configFiles/config_Scaffold_GH10")
             if Nfeval % SNAPSHOT_INTERVAL == 0:
                 shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH10.csv')
 
@@ -303,71 +299,78 @@ def ABM(x):
 
     return np.sum(Y) #SSE
 
-# =================================
+if __name__ == "__main__":
+    # Create parameter names
+    numpar = 75 # total number of parameters
+    names = ["" for j in range(numpar)]
 
-# Create parameter names
-numpar = 75 # total number of parameters
-names = ["" for j in range(numpar)]
+    # Update array with selected parameters
+    params = extract_n_params(method=method, n=n)
 
-# Update array with selected parameters
-params = extract_n_params(method=method, n=n)
+    df = pd.read_excel(r'Sensitivity Analysis.xlsx') # read parameter bounds
 
-df = pd.read_excel(r'Sensitivity Analysis.xlsx') # read parameter bounds
+    for i in range(numpar):
+        names[i] = "x" + str(i)
 
-for i in range(numpar):
-    names[i] = "x" + str(i)
+    # Read bounds
+    bounds = df[["Lower bound", "Upper bound"]].to_numpy()
 
-# Read bounds
-bounds = df[["Lower bound", "Upper bound"]].to_numpy()
+    # Read default values
+    temp_sample_1 = df[["Default Value"]].to_numpy()
+    global temp_sample
+    temp_sample = np.reshape(temp_sample_1,numpar)
 
-# Read default values
-temp_sample_1 = df[["Default Value"]].to_numpy()
-global temp_sample
-temp_sample = np.reshape(temp_sample_1,numpar)
+    # Choose specific parameters
+    names_s = list( names[i] for i in params )
+    print(names_s)
+    bounds_s = bounds[np.array(params)]
+    print(bounds_s)
+    default_s = temp_sample[np.array(params)]
+    print(default_s)
 
-# Choose specific parameters
-names_s = list( names[i] for i in params )
-print(names_s)
-bounds_s = bounds[np.array(params)]
-print(bounds_s)
-default_s = temp_sample[np.array(params)]
-print(default_s)
+    # Open files
+    stdout_file_name = "output/SensitivityAnalysis/stdout.txt"
+    stderr_file_name = "output/SensitivityAnalysis/stderr.txt"
+    open(stdout_file_name, 'w').close()
+    open(stderr_file_name, 'w').close()
 
-# Open files
-stdout_file_name = "output/SensitivityAnalysis/stdout.txt"
-stderr_file_name = "output/SensitivityAnalysis/stderr.txt"
-open(stdout_file_name, 'w').close()
-open(stderr_file_name, 'w').close()
+    # Create snapshots file
+    if args.snapshots:
+        os.makedirs('output/snapshots', exist_ok=True)
+        open('output/snapshots/day_snapshots.csv', 'w').close()
+        os.makedirs('output/snapshots/biomarker_csvs', exist_ok=True)
 
-# Create snapshots file
-if args.snapshots:
-    os.makedirs('output/snapshots', exist_ok=True)
-    open('output/snapshots/day_snapshots.csv', 'w').close()
-    os.makedirs('output/snapshots/biomarker_csvs', exist_ok=True)
+    # # # Run optimization # # #
+    Nfeval = 1
 
-# # # Run optimization # # #
-Nfeval = 1
+    # Construct an initial simplex
+    selected_init = construct_simplex(bounds, params)
 
-# Construct an initial simplex
-selected_init = construct_simplex(bounds, params)
+    # Generate experimental values
+    global experimental_df_indexed
+    experimental_df = extract_small_scaffold_experimental(Path("experimental_config.csv"))
+    experimental_df_indexed = experimental_df.set_index(['group', 'time_hour'])
 
-result = minimize(
-    ABM if not args.test else test_ABM, 
-    default_s, 
-    method='nelder-mead', 
-    tol = 1e-4, 
-    bounds = bounds_s, 
-    options={
-        'maxiter': 50 if not args.test else 5, 
-        'disp': True, 
-        'initial_simplex': selected_init, 
-        'return_all': True
-    }
-)
+    print("Experimental data:")
+    print(experimental_df_indexed)
 
-result.x, result.fun
+    result = minimize(
+        ABM, 
+        default_s, 
+        method='nelder-mead', 
+        tol = 1e-4, 
+        bounds = bounds_s, 
+        options={
+            'maxiter': 50, 
+            'disp': True, 
+            'initial_simplex': selected_init, 
+            'return_all': True
+        }
+    )
 
-print(result.x)
-print(result.fun)
-print(result.message)
+    result.x, result.fun
+
+    print(result.x)
+    print(result.fun)
+    print(result.message)
 

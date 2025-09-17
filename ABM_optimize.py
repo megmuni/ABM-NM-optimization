@@ -223,11 +223,11 @@ def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataF
 
     for iter in range(num_iters):
         print(f"Running iteration {iter + 1} for config {config_file}")
-        # with open(stdout_file_name, 'a') as stdout_file:
-        #     with open(stderr_file_name, 'a') as stderr_file:
-        #         stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-        #         stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-        #         subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , config_file, "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
+        with open(stdout_file_name, 'a') as stdout_file:
+            with open(stderr_file_name, 'a') as stderr_file:
+                stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
+                stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
+                subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , config_file, "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
 
         # After each run, read output and calculate error
         with open('output/Output_Biomarkers.csv', 'rt') as f:

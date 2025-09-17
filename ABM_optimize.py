@@ -211,7 +211,7 @@ def save_snapshot(nfeval: int, config: str):
         writer.writerow(snapshot_data_day_3_with_nfeval)
         writer.writerow(snapshot_data_day_6_with_nfeval)
 
-def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataFrame, i: int, num_iters: int = 3):
+def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataFrame, config_index: int, num_iters: int = 3):
     """
     Run the ABM simulation with the specified scaffold configuration file.
     """
@@ -223,11 +223,11 @@ def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataF
 
     for iter in range(num_iters):
         print(f"Running iteration {iter + 1} for config {config_file}")
-        with open(stdout_file_name, 'a') as stdout_file:
-            with open(stderr_file_name, 'a') as stderr_file:
-                stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , config_file, "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
+        # with open(stdout_file_name, 'a') as stdout_file:
+        #     with open(stderr_file_name, 'a') as stderr_file:
+        #         stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
+        #         stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
+        #         subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , config_file, "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
 
         # After each run, read output and calculate error
         with open('output/Output_Biomarkers.csv', 'rt') as f:
@@ -249,10 +249,11 @@ def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataF
             collagen_day6_errors.append(error(day6_collagen, float(temp[TICKS_PER_DAY * 6][8])))
 
     # Assign the mean error over all runs
-    Y[0][i] = np.mean(fibroblast_day3_errors)
-    Y[1][i] = np.mean(collagen_day3_errors)
-    Y[2][i] = np.mean(fibroblast_day6_errors)
-    Y[3][i] = np.mean(collagen_day6_errors)
+    base = config_index * 4
+    Y[base + 0] = np.mean(fibroblast_day3_errors)
+    Y[base + 1] = np.mean(collagen_day3_errors)
+    Y[base + 2] = np.mean(fibroblast_day6_errors)
+    Y[base + 3] = np.mean(collagen_day6_errors)
 
 def ABM(x):
 
@@ -267,35 +268,34 @@ def ABM(x):
     # Put sampled parameters into text files
     np.savetxt("Sample.txt", [sam], delimiter='\t')
 
-    Y = np.zeros((12, 4))
+    Y = np.zeros(12)
 
-    for i in range(3):
-        
-        run_with_scaffold("configFiles/config_Scaffold_GH2.txt", Y, experimental_df_indexed, i)
+    run_with_scaffold("configFiles/config_Scaffold_GH2.txt", Y, experimental_df_indexed, config_index=0)
 
-        if args.snapshots:
-            save_snapshot(Nfeval, "config_Scaffold_GH2")
-            if Nfeval % SNAPSHOT_INTERVAL == 0:
-                shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH2.csv')
+    if args.snapshots:
+        save_snapshot(Nfeval, "config_Scaffold_GH2")
+        if Nfeval % SNAPSHOT_INTERVAL == 0:
+            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH2.csv')
 
-        run_with_scaffold("configFiles/config_Scaffold_GH5.txt", Y, experimental_df_indexed, i)
+    run_with_scaffold("configFiles/config_Scaffold_GH5.txt", Y, experimental_df_indexed, config_index=1)
 
-        if args.snapshots:
-            save_snapshot(Nfeval, "config_Scaffold_GH5")
-            if Nfeval % SNAPSHOT_INTERVAL == 0:
-                shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH5.csv')
+    if args.snapshots:
+        save_snapshot(Nfeval, "config_Scaffold_GH5")
+        if Nfeval % SNAPSHOT_INTERVAL == 0:
+            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH5.csv')
 
-        run_with_scaffold("configFiles/config_Scaffold_GH10.txt", Y, experimental_df_indexed, i)
+    run_with_scaffold("configFiles/config_Scaffold_GH10.txt", Y, experimental_df_indexed, config_index=2)
 
-        if args.snapshots:
-            save_snapshot(Nfeval, "configFiles/config_Scaffold_GH10")
-            if Nfeval % SNAPSHOT_INTERVAL == 0:
-                shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH10.csv')
+    if args.snapshots:
+        save_snapshot(Nfeval, "configFiles/config_Scaffold_GH10")
+        if Nfeval % SNAPSHOT_INTERVAL == 0:
+            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH10.csv')
 
-        # Dynamically create string based on the number of parameters
-        format_str = formatted_string(Nfeval, x, Y)     
-        print(format_str)
-        Nfeval += 1
+    # Dynamically create string based on the number of parameters
+    format_str = formatted_string(Nfeval, x, Y)     
+    print(format_str)
+    Nfeval += 1 # Increment function evaluation count
+    print(Y)
 
     return np.sum(Y) #SSE
 

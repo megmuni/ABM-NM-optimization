@@ -8,6 +8,7 @@ FinalTotalChemVR.dat
 param_opt_*.tar.gz
 running_time.txt
 slurm-*
+generated_samples_with_outputs.csv
 
 # need to put your own files in these
 bin/* 

@@ -87,7 +87,7 @@ def error(expected, actual):
     """
     Calculate SSE between expected and actual values.
     """
-    return ((expected - actual) / max(expected, actual)) ** 2
+    return (expected - actual) ** 2
 
 def construct_simplex(bounds: np.ndarray, selected_params: list):
     """

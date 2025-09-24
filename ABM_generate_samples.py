@@ -76,7 +76,7 @@ def mutate_parameters(params: pd.DataFrame, mutate_params: list[str]) -> pd.Data
         row = mutated_params[mutated_params["Parameter Name"] == param]
         lower = row["Lower bound"].values[0]
         upper = row["Upper bound"].values[0]
-        mutated_value = random.uniform(lower, upper)
+        mutated_value = np.random.uniform(lower, upper)
         mutated_params.loc[mutated_params["Parameter Name"] == param, "value"] = mutated_value
             
     return mutated_params

@@ -58,7 +58,3 @@ if __name__ == "__main__":
 
     with open("verification_results.json", "w") as f:
         json.dump(results_json, f, indent=2)
-
-
-    
-    

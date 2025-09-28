@@ -1,5 +1,5 @@
 from pathlib import Path
-from ABM import extract_n_param_names, create_sample_file, run_ABM
+from ABM import extract_n_param_names, create_sample_file, run_ABM, extract_output_metrics
 import numpy as np
 import pandas as pd
 
@@ -7,22 +7,6 @@ import pandas as pd
 # Script to generate samples, including parameter sets
 # and expected outputs, for the ABM model.
 # ==================================================
-
-def extract_output_metrics(output_file: Path) -> dict[str, float]:
-    """
-    Extract output metrics from the ABM output_biomarkers.csv file.
-    """
-    df = pd.read_csv(output_file)
-    day3_tick = 132
-    day6_tick = 264
-    day3_row = df[df["clock"] == day3_tick]
-    day6_row = df[df["clock"] == day6_tick]
-    return {
-        "day_3_collagen": day3_row["Collagen"].values[0],
-        "day_3_fibroblast": day3_row["ActivatedFibroblast"].values[0] + day3_row["Fibroblast"].values[0],
-        "day_6_collagen": day6_row["Collagen"].values[0],
-        "day_6_fibroblast": day6_row["Fibroblast"].values[0] + day6_row["ActivatedFibroblast"].values[0],
-    }
 
 def mutate_parameters(params: pd.DataFrame, mutate_params: list[str]) -> pd.DataFrame:
     """

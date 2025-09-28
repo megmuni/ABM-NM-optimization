@@ -2,7 +2,7 @@ import pandas as pd
 import json
 import numpy as np
 from pathlib import Path
-from ABM import extract_n_param_names, create_sample_file, run_ABM
+from ABM import extract_n_param_names, create_sample_file, run_ABM, extract_output_metrics
 
 # ======================
 # Check that the ABM model is working as expected
@@ -11,7 +11,7 @@ from ABM import extract_n_param_names, create_sample_file, run_ABM
 
 if __name__ == "__main__":
     generated_samples_df = pd.read_csv("generated_samples_with_outputs.csv")
-    param_names = extract_n_param_names()
+    param_names = extract_n_param_names(n=75) # Extract the maximum number of parameters
 
     known_result_cols = [
         "day_3_collagen",
@@ -28,12 +28,12 @@ if __name__ == "__main__":
         create_sample_file(param_values)
         run_ABM(Path("Sample.txt"))
 
-        simulated = {col: float(row[col]) for col in known_result_cols}
-
+        # Extract simulated results from ABM output
+        real_output = extract_output_metrics(Path("output/Output_Biomarkers.csv"))
         errors = {}
         for col in known_result_cols:
             known = float(row[col])
-            sim = simulated[col]
+            sim = float(real_output[col])
             err = (sim - known) ** 2
             errors[col] = err
             squared_errors[col].append(err)
@@ -42,7 +42,7 @@ if __name__ == "__main__":
             "sample_id": int(row["sample_id"]),
             "input_parameters": {param: row[param] for param in param_names},
             "expected_outputs": {col: float(row[col]) for col in known_result_cols},
-            "simulated_outputs": simulated,
+            "simulated_outputs": {col: float(real_output[col]) for col in known_result_cols},
             "squared_errors": errors
         })
 

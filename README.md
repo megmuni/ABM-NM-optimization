@@ -1,3 +1,23 @@
+## Generating Samples
+
+To generate parameter samples and expected outputs for the ABM model, run:
+
+```bash
+python ABM_generate_samples.py
+```
+
+This will create a file named `generated_samples_with_outputs.csv` containing parameter sets and their corresponding expected outputs for different configurations.
+
+## Running Verification
+
+To verify the ABM model outputs against the known results, run:
+
+```bash
+python ABM_verify.py
+```
+
+This will execute the ABM for each sample, compare the simulated outputs to the expected values, and write a summary of the results to `verification_results.json`. The JSON file includes per-sample errors and overall summary metrics (such as mean squared error for each output variable).
+
 # Parameter optimization
 
 ## Overview
@@ -35,6 +55,7 @@ export EMAIL="youremail@mail.com"
 ```
 
 2. Submit the script
+
 ```bash
 sbatch --mail-user $EMAIL ABM_optimize_job.sh [optional args]
 ```

@@ -44,17 +44,17 @@ def run_ABM(config_file: Path) -> None:
     """
     stdout_file_name = "output/stdout.txt"
     stderr_file_name = "output/stderr.txt"
-    # with open(stdout_file_name, "w") as stdout_file, open(stderr_file_name, "w") as stderr_file:  
-    #     subprocess.call([
-    #         "./bin/testRun",
-    #         "--numticks",
-    #         "289", 
-    #         "--inputfile",
-    #         str(config_file),
-    #         "--wxw",
-    #         "0.6",
-    #         "--wyw",
-    #         "0.6",
-    #         "--wzw",
-    #         "0.6"
-    #     ], stdout=stdout_file, stderr=stderr_file)
+    with open(stdout_file_name, "w") as stdout_file, open(stderr_file_name, "w") as stderr_file:  
+        subprocess.call([
+            "./bin/testRun",
+            "--numticks",
+            "289", 
+            "--inputfile",
+            str(config_file),
+            "--wxw",
+            "0.6",
+            "--wyw",
+            "0.6",
+            "--wzw",
+            "0.6"
+        ], stdout=stdout_file, stderr=stderr_file)

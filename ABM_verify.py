@@ -15,7 +15,7 @@ def extract_param_names_from_csv(csv_file: str = "generated_samples_with_outputs
     """
     df = pd.read_csv(csv_file)
     
-    metadata_cols = ["sample_id", "param_set_id", "configuration"]
+    metadata_cols = ["sample_id", "param_set_id", "configuration", "num_params_mutated"]
     output_cols = ["day_3_collagen", "day_3_fibroblast", "day_6_collagen", "day_6_fibroblast"]
     
     all_cols = df.columns.tolist()

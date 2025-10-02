@@ -9,9 +9,24 @@ from ABM import extract_n_param_names, create_sample_file, run_ABM, extract_outp
 # i.e. it produces expected outputs for known inputs
 # ======================
 
+def extract_param_names_from_csv(csv_file: str = "generated_samples_with_outputs.csv") -> list[str]:
+    """
+    Extract parameter names from the CSV file in the order they appear as columns.
+    """
+    df = pd.read_csv(csv_file)
+    
+    metadata_cols = ["sample_id", "param_set_id", "configuration"]
+    output_cols = ["day_3_collagen", "day_3_fibroblast", "day_6_collagen", "day_6_fibroblast"]
+    
+    all_cols = df.columns.tolist()
+    
+    param_cols = [col for col in all_cols if col not in metadata_cols and col not in output_cols]
+    
+    return param_cols
+
 if __name__ == "__main__":
     generated_samples_df = pd.read_csv("generated_samples_with_outputs.csv")
-    param_names = extract_n_param_names(n=75) # Extract the maximum number of parameters
+    param_names = extract_param_names_from_csv()
 
     known_result_cols = [
         "day_3_collagen",

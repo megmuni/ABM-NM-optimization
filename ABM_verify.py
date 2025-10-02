@@ -41,7 +41,11 @@ if __name__ == "__main__":
     for idx, row in generated_samples_df.iterrows():
         param_values = [row[param] for param in param_names]
         create_sample_file(param_values)
-        run_ABM(Path("Sample.txt"))
+        
+        # Extract the config file
+        config_file = row["configuration"]
+        config_file_with_ext = f"configFiles/{config_file}.txt"
+        run_ABM(Path(config_file_with_ext))
 
         # Extract simulated results from ABM output
         real_output = extract_output_metrics(Path("output/Output_Biomarkers.csv"))

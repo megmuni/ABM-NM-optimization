@@ -1,3 +1,5 @@
+Contains the Nelder-Mead optimization workflow for VUA Lab ABMs. This is a mirror of [https://github.com/mintary/abm-opt](https://github.com/mintary/abm-opt), updated to work with the latest ABM input/output structure (for example, the [IVDBM-ABM](https://github.com/megmuni/IVDBM-ABM)).
+
 ## Generating Samples
 
 To generate parameter samples and expected outputs for the ABM model, run:

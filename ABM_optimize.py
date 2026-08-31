@@ -47,7 +47,7 @@ def small_scaffold_adjustment_cells(value: float) -> float:
     """
     return ((0.6 ** 3) / 1000 / 0.3) * value
 
-def small_scaffold_adjustment_collagen(value: float) -> float:
+def small_scaffold_adjustment_aggrecan(value: float) -> float:
     """
     Adjusts the value for the small scaffold experimental data.
     The adjustment is based on the formula:
@@ -62,23 +62,17 @@ def extract_small_scaffold_experimental(file_path: Path) -> pd.DataFrame:
     df = pd.read_csv(file_path)
     df.columns = [c.strip() for c in df.columns]
 
-    # Calculate average for each config (GH2, GH5, GH10)
-    df["picogreen_cells"] = df["picogreen_cells"].astype(float)
-    df["sircol_collagen_ug"] = df["sircol_collagen_ug"].astype(float)
-    df["bradford_protein_ug_per_ml"] = df["bradford_protein_ug_per_ml"].astype(float)
-
-    # Add a column for live cells
-    df["live_cells"] = df["picogreen_cells"] * (df["cell_viability"])
+    # Calculate average for each config (low, high)
+    df["cell_viability_percent"] = df["cell_viability_percent"].astype(float)
+    df["sGAG_total_ug"] = df["sGAG_total_ug"].astype(float)
+    df["percent_diff"] = df["percent_diff"].astype(float)
 
     # Calculate the average values for each group and time point
     averages = df.groupby(["group", "time_hour"]).mean().reset_index()
-
-    # Apply scaffold adjustment to the mean live_cells
-    averages["small_scaffold_cell_avg"] = averages["live_cells"].apply(small_scaffold_adjustment_cells)
-
-    # Collagen adjustment (convert from ug to pg)
-    averages["small_scaffold_collagen_pg"] = averages["sircol_collagen_ug"].apply(
-        lambda x: small_scaffold_adjustment_collagen(x)
+    
+    # Aggrecan adjustment
+    averages["small_scaffold_aggrecan_ug"] = averages["sGAG_total_ug"].apply(
+        lambda x: small_scaffold_adjustment_aggrecan(x)
     )
     
     return averages
@@ -194,32 +188,35 @@ def save_snapshot(nfeval: int, config: str):
     """
     Save snapshot for this configuration to a CSV file.
     """
-    snapshot_data_day_3 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 3)
-    snapshot_data_day_6 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 6)
-    snapshot_data_day_3_with_nfeval = dict(snapshot_data_day_3)
-    snapshot_data_day_3_with_nfeval['nfeval'] = nfeval
-    snapshot_data_day_3_with_nfeval['config'] = config
+    snapshot_data_day_7 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 7)
+    snapshot_data_day_21 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 21)
+    snapshot_data_day_7_with_nfeval = dict(snapshot_data_day_7)
+    snapshot_data_day_7_with_nfeval['nfeval'] = nfeval
+    snapshot_data_day_7_with_nfeval['config'] = config
 
-    snapshot_data_day_6_with_nfeval = dict(snapshot_data_day_6)
-    snapshot_data_day_6_with_nfeval['nfeval'] = nfeval
-    snapshot_data_day_6_with_nfeval['config'] = config
-    fieldnames = list(snapshot_data_day_3.keys()) + ['nfeval'] + ['config']
+    snapshot_data_day_21_with_nfeval = dict(snapshot_data_day_21)
+    snapshot_data_day_21_with_nfeval['nfeval'] = nfeval
+    snapshot_data_day_21_with_nfeval['config'] = config
+    fieldnames = list(snapshot_data_day_7.keys()) + ['nfeval'] + ['config']
     with open('output/snapshots/day_snapshots.csv', 'a', newline='') as snapshots_file:
         writer = csv.DictWriter(snapshots_file, fieldnames=fieldnames)
         if snapshots_file.tell() == 0:
             writer.writeheader()
-        writer.writerow(snapshot_data_day_3_with_nfeval)
-        writer.writerow(snapshot_data_day_6_with_nfeval)
+        writer.writerow(snapshot_data_day_7_with_nfeval)
+        writer.writerow(snapshot_data_day_21_with_nfeval)
 
 def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataFrame, config_index: int, num_iters: int = 3):
     """
     Run the ABM simulation with the specified scaffold configuration file.
     """
     # Collect errors for each run
-    fibroblast_day3_errors = []
-    collagen_day3_errors = []
-    fibroblast_day6_errors = []
-    collagen_day6_errors = []
+    # modify this list based on what experimental data you have available,
+    # at which timepoints
+    cellviability_day7_errors = []
+    percentdiff_day7_errors = []
+    cellviability_day21_errors = []
+    aggrecan_day21_errors = []
+    percentdiff_day21_errors = []
 
     for iter in range(num_iters):
         print(f"Running iteration {iter + 1} for config {config_file}")
@@ -235,25 +232,30 @@ def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataF
             temp = list(temp)
 
             group_name = Path(config_file).stem
-            day3_fibroblasts = experimental_df.loc[(group_name, 72), 'small_scaffold_cell_avg']
-            day6_fibroblasts = experimental_df.loc[(group_name, 144), 'small_scaffold_cell_avg']
-            day3_collagen = experimental_df.loc[(group_name, 72), 'small_scaffold_collagen_pg']
-            day6_collagen = experimental_df.loc[(group_name, 144), 'small_scaffold_collagen_pg']
+            day7_cellviability = experimental_df.loc[(group_name, 168), 'small_scaffold_cell_viability']
+            day21_cellviability = experimental_df.loc[(group_name, 504), 'small_scaffold_cell_viability']
+            #day7_aggrecan= experimental_df.loc[(group_name, 168), 'small_scaffold_aggrecan_pg']
+            day21_aggrecan = experimental_df.loc[(group_name, 504), 'small_scaffold_aggrecan_ug']
+            day7_percentdiff = experimental_df.loc[(group_name, 168), 'small_scaffold_percent_diff']
+            day21_percentdiff = experimental_df.loc[(group_name, 504), 'small_scaffold_percent_diff']
 
-            print(f"Day 3: collagen={temp[TICKS_PER_DAY * 3][8]} activated={temp[TICKS_PER_DAY * 3][16]} fibroblasts={temp[TICKS_PER_DAY * 3][17]}")
-            print(f"Day 6: collagen={temp[TICKS_PER_DAY * 6][8]} activated={temp[TICKS_PER_DAY * 6][16]} fibroblasts={temp[TICKS_PER_DAY * 6][17]}")
+            print(f"Day 7: aggrecan={temp[TICKS_PER_DAY * 7][6]} total cells={temp[TICKS_PER_DAY * 7][7]} cell viability={temp[TICKS_PER_DAY * 7][18]} % diff={temp[TICKS_PER_DAY * 7][19]}")
+            print(f"Day 21: aggrecan={temp[TICKS_PER_DAY * 21][6]} total cells={temp[TICKS_PER_DAY * 21][7]} cell viability={temp[TICKS_PER_DAY * 21][18]} % diff={temp[TICKS_PER_DAY * 21][19]}")
 
-            fibroblast_day3_errors.append(error(day3_fibroblasts, float(temp[TICKS_PER_DAY * 3][16]) + float(temp[TICKS_PER_DAY * 3][17])))
-            collagen_day3_errors.append(error(day3_collagen, float(temp[TICKS_PER_DAY * 3][8])))
-            fibroblast_day6_errors.append(error(day6_fibroblasts, float(temp[TICKS_PER_DAY * 6][16]) + float(temp[TICKS_PER_DAY * 6][17])))
-            collagen_day6_errors.append(error(day6_collagen, float(temp[TICKS_PER_DAY * 6][8])))
+            cellviability_day7_errors.append(error(day7_cellviability, float(temp[TICKS_PER_DAY * 7][19])))
+            percentdiff_day7_errors.append(error(day7_percentdiff, float(temp[TICKS_PER_DAY * 7][20])))
+            
+            aggrecan_day21_errors.append(error(day21_aggrecan, float(temp[TICKS_PER_DAY * 21][6])))
+            cellviability_day21_errors.append(error(day21_cellviability, float(temp[TICKS_PER_DAY * 21][19])))
+            percentdiff_day21_errors.append(error(day21_percentdiff, float(temp[TICKS_PER_DAY * 21][20])))
 
     # Assign the mean error over all runs
-    base = config_index * 4
-    Y[base + 0] = np.mean(fibroblast_day3_errors)
-    Y[base + 1] = np.mean(collagen_day3_errors)
-    Y[base + 2] = np.mean(fibroblast_day6_errors)
-    Y[base + 3] = np.mean(collagen_day6_errors)
+    base = config_index * 5
+    Y[base + 0] = np.mean(cellviability_day7_errors)
+    Y[base + 1] = np.mean(percentdiff_day7_errors)
+    Y[base + 2] = np.mean(aggrecan_day21_errors)
+    Y[base + 3] = np.mean(cellviability_day21_errors)
+    Y[base + 4] = np.mean(percentdiff_day21_errors)
 
 def ABM(x):
 

@@ -6,6 +6,11 @@ import pandas as pd
 # ==================================================
 # Script to generate samples, including parameter sets
 # and expected outputs, for the ABM model.
+#
+# Sept 2026: Updated to work with the JSON config structure.
+# A single simulation_config.template.json (with mutable params
+# under "biology") is used to write a merged JSON config file per sample
+# instead of the old Sample.txt
 # ==================================================
 
 def mutate_parameters(params: pd.DataFrame, mutate_params: list[str]) -> pd.DataFrame:
@@ -44,31 +49,31 @@ def generate_samples(n_samples: int, method: str) -> pd.DataFrame:
     all_params = get_param_names(param_df)
     top_params = extract_n_param_names(method, n=5)
     rows_list = []
-    config_files = [
-        Path("configFiles/config_Scaffold_GH2.txt"),
-        Path("configFiles/config_Scaffold_GH5.txt"),
-        Path("configFiles/config_Scaffold_GH10.txt"),
-    ]
+    
+    config_template = Path("configFiles/simulation_config.template.json")
+    
     total_generated = 0
     # set value column to default values
     param_df["value"] = param_df["Default Value"]
     for i in range(n_samples):
         sample_df = mutate_parameters(param_df, top_params)
         param_values = sample_df["value"].tolist()
-        create_sample_file(param_values)
-        for config in config_files:
-            run_ABM(config)
-            metrics = extract_output_metrics(Path("output/Output_Biomarkers.csv"))
-            result_row = {
-                "sample_id": total_generated,
-                "param_set_id": i,
-                "configuration": config.stem,
-                "num_params_mutated": len(top_params),
-                **{param: sample_df[sample_df["Parameter Name"] == param]["value"].values[0] for param in all_params},
-                **metrics
-            }
-            rows_list.append(result_row)
-            total_generated += 1
+        
+        sample_config_path = Path("configFiles/simulation_config_sample.json")
+        create_sample_file(param_values, config_template, sample_config_path) #make sample param set to run ABM
+        
+        run_ABM(sample_config_path) #run the ABM with the sample
+        metrics = extract_output_metrics(Path("output/Output_Biomarkers.csv"))
+        result_row = {
+            "sample_id": total_generated,
+            "param_set_id": i,
+            "num_params_mutated": len(top_params),
+            **{param: sample_df[sample_df["Parameter Name"] == param]["value"].values[0] for param in all_params},
+            **metrics
+        }
+        rows_list.append(result_row)
+        total_generated += 1
+
     result_df = pd.DataFrame(rows_list)
     return result_df
 

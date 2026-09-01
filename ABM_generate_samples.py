@@ -1,5 +1,5 @@
 from pathlib import Path
-from ABM import extract_n_param_names, create_sample_file, run_ABM, extract_output_metrics
+from ABM import create_sample_file, run_ABM, extract_output_metrics
 import numpy as np
 import pandas as pd
 from scipy.stats import truncnorm
@@ -114,6 +114,7 @@ def generate_samples(n_samples: int, method: str) -> pd.DataFrame:
     config_template = Path("configFiles/simulation_config.template.json")
     
     param_names = param_df["Parameter Name"].tolist()
+    conditions = ["high", "low"]
     
     total_generated = 0
     # set value column to default values
@@ -122,19 +123,20 @@ def generate_samples(n_samples: int, method: str) -> pd.DataFrame:
         sample_df = mutate_parameters(param_df)
         param_values = sample_df["value"].tolist()
         
-        sample_config_path = Path("configFiles/simulation_config_sample.json")
-        create_sample_file(param_values, config_template, sample_config_path, parameter_names=param_names) #make sample param set to run ABM
+        for condition in conditions:
+            sample_config_path = Path("configFiles/simulation_config_sample.json")
+            create_sample_file(param_values, config_template, sample_config_path, parameter_names=param_names) #make sample param set to run ABM
         
-        run_ABM(sample_config_path) #run the ABM with the sample
-        metrics = extract_output_metrics(Path("output/Output_Biomarkers.csv"))
-        result_row = {
-            "sample_id": i,
-            "num_params_varied": num_varying,
-            **{name: param_values[j] for j, name in enumerate(param_names)},
-            **metrics
-        }
-        rows_list.append(result_row)
-        total_generated += 1
+            run_ABM(sample_config_path) #run the ABM with the sample
+            metrics = extract_output_metrics(Path("output/Output_Biomarkers.csv"))
+            result_row = {
+                "sample_id": i,
+                "num_params_varied": num_varying,
+                **{name: param_values[j] for j, name in enumerate(param_names)},
+                **metrics
+            }
+            rows_list.append(result_row)
+            total_generated += 1
 
     result_df = pd.DataFrame(rows_list)
     return result_df

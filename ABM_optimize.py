@@ -9,14 +9,20 @@ import subprocess
 import csv
 import argparse 
 
+from ABM import create_sample_file, run_ABM
+
 # ==========================
 # CONSTANTS
 # TODO: Move these into a config file.
-FIBROBLASTS = 90
-DAY_3_COLLAGEN = 64736.8
-DAY_6_COLLAGEN = 42785
 SNAPSHOT_INTERVAL = 5
-TICKS_PER_DAY = 44
+TICKS_PER_DAY = 48
+
+CONFIG_TEMPLATE = Path("configFiles/simulation_config.template.json")
+
+CONDITION_TO_GROUP = {
+    "high": "config_scaffold_High",
+    "low": "config_scaffold_Low",
+}
 # ==========================
 
 # ==========================
@@ -24,7 +30,7 @@ TICKS_PER_DAY = 44
 # n: number of parameters to optimize
 # method: method to use for parameter importance ranking, must
 # match the column name in the excel file
-# "Sensitivity Analysis.xlsx"
+# "parameters.xlsx"
 # ==========================
 parser = argparse.ArgumentParser(description='Run ABM optimization.')
 
@@ -45,7 +51,7 @@ def small_scaffold_adjustment_cells(value: float) -> float:
     The adjustment is based on the formula:
     ((0.6)^3 / 1000 / 0.3 ) * value
     """
-    return ((0.6 ** 3) / 1000 / 0.3) * value
+    return ((0.3 ** 3) / 1000 / 0.3) * value
 
 def small_scaffold_adjustment_aggrecan(value: float) -> float:
     """
@@ -53,7 +59,7 @@ def small_scaffold_adjustment_aggrecan(value: float) -> float:
     The adjustment is based on the formula:
     ((0.6)^3 / 300 ) * value * 10^6
     """
-    return ((0.6 ** 3) / 300) * value * 10 ** 6
+    return ((0.5 * 0.4 * 0.3) / 60) * value * 10 ** 6 # value in ug
 
 def extract_small_scaffold_experimental(file_path: Path) -> pd.DataFrame:
     """
@@ -69,6 +75,10 @@ def extract_small_scaffold_experimental(file_path: Path) -> pd.DataFrame:
 
     # Calculate the average values for each group and time point
     averages = df.groupby(["group", "time_hour"]).mean().reset_index()
+    
+    # Cell-related adjustments
+    averages["small_scaffold_cell_viability"] = averages["cell_viability_percent"]
+    averages["small_scaffold_percent_diff"] = averages["percent_diff"]
     
     # Aggrecan adjustment
     averages["small_scaffold_aggrecan_ug"] = averages["sGAG_total_ug"].apply(
@@ -147,28 +157,30 @@ def formatted_string(Nfeval, x, Y) -> str:
     format_str += f"{np.sum(Y):3.6f}"
     return format_str
 
-def extract_n_params(method="Random Forest", n=5) -> list:
+def extract_varying_param_indices() -> list:
     """
-    Extract the n most important parameters from the given method.
-    Default: Random Forest, n = 5
+    Extract the indices of every parameter that should be optimized --
+    i.e. every row in parameters.xlsx whose "Vary?" column is
+    blank/NaN, matching the same convention used in the upstream
+    sampling/RF pipeline (blank = vary, any non-blank value e.g. "N" =
+    don't vary, use the default).
     """
-    # read senstivity analysis data and drop unranked parameters
-    df = pd.read_excel("Sensitivity Analysis.xlsx")
-    print(df)
-    df_filtered = df.dropna(subset=[method])
-    
-    # sort by the column corresponding to the method
-    df_sorted = df_filtered.sort_values(by=method, ascending=True)
-    
-    # get the top n parameters
-    top_n_params = df_sorted.head(n)
-    
-    if len(top_n_params) < n:
-        raise ValueError(f"Not enough parameters found for method: {method}. Found: {top_n_params.shape[0]}, expected: {n}.")
-
-    # extract the parameter numbers as a list
-    param_nums = [int(param) for param in top_n_params["Parameter Number"].tolist()]
-    
+    df = pd.read_excel("parameters.xlsx")
+ 
+    # Same robust "blank vs non-blank" check used upstream: treat any
+    # non-empty value in "Vary?" as "don't vary", rather than matching the
+    # literal string "N" (robust to whitespace/case/type quirks in Excel).
+    vary_mask = df["Vary?"].apply(lambda v: not (pd.notna(v) and str(v).strip() != ""))
+ 
+    varying_rows = df[vary_mask]
+ 
+    if varying_rows.empty:
+        raise ValueError('No parameters found with a blank "Vary?" column -- nothing to optimize.')
+ 
+    param_nums = [int(p) for p in varying_rows["Parameter Number"].tolist()]
+ 
+    print(f"Optimizing {len(param_nums)} parameters (Vary? blank): {param_nums}")
+ 
     return param_nums
 
 def extract_row_as_dict(csv_path: str, row_index: int) -> dict[str, Any]:
@@ -183,6 +195,30 @@ def extract_row_as_dict(csv_path: str, row_index: int) -> dict[str, Any]:
             if i == row_index:
                 return {k: float(v) for k, v in row.items()}
     return {}
+
+def extract_biomarkers_at_tick(csv_path: str, tick: int) -> dict[str, float]:
+    """
+    Read Output_Biomarkers.csv and return the biomarker values at the row
+    whose clock column equals `tick`
+    """
+    df = pd.read_csv(csv_path)
+    row = df[df[CLOCK_COL] == tick]
+    if row.empty:
+        raise ValueError(f"No row found in {csv_path} with {CLOCK_COL} == {tick}")
+ 
+    return {
+        "aggrecan": float(row[AGGRECAN_COL].values[0]),
+        "total_cells": float(row[TOTAL_CELLS_COL].values[0]),
+        "cell_viability": float(row[CELL_VIABILITY_COL].values[0]),
+        "percent_diff": float(row[PERCENT_DIFF_COL].values[0]),
+    }
+
+# Column names taken directly from Output_Biomarkers.csv header row
+CLOCK_COL = "clock (30 min)"
+AGGRECAN_COL = "Aggrecan (ug)"
+TOTAL_CELLS_COL = "Total Cells"
+CELL_VIABILITY_COL = "Viability Rate(%)"
+PERCENT_DIFF_COL = "Differentiation (%)"
 
 def save_snapshot(nfeval: int, config: str):
     """
@@ -205,9 +241,11 @@ def save_snapshot(nfeval: int, config: str):
         writer.writerow(snapshot_data_day_7_with_nfeval)
         writer.writerow(snapshot_data_day_21_with_nfeval)
 
-def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataFrame, config_index: int, num_iters: int = 3):
+def run_with_scaffold(condition: str, Y: np.ndarray, experimental_df: pd.DataFrame, config_index: int, param_values: list, 
+                      param_names: list, num_iters: int = 3):
     """
-    Run the ABM simulation with the specified scaffold configuration file.
+    Run the ABM simulation with the specified scaffold configuration 
+    # ("high" or "low")
     """
     # Collect errors for each run
     # modify this list based on what experimental data you have available,
@@ -217,6 +255,8 @@ def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataF
     cellviability_day21_errors = []
     aggrecan_day21_errors = []
     percentdiff_day21_errors = []
+    
+    sample_config_path = Path("configFiles/simulation_config_sample.json")
 
     for iter in range(num_iters):
         print(f"Running iteration {iter + 1} for config {config_file}")
@@ -224,7 +264,9 @@ def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataF
             with open(stderr_file_name, 'a') as stderr_file:
                 stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
                 stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                subprocess.call(["./bin/testRun", "--numticks", "289" , "--inputfile" , config_file, "--wxw", "0.6", "--wyw", "0.6", "--wzw", "0.6"], stdout = stdout_file, stderr = stderr_file)
+                create_sample_file(param_values, CONFIG_TEMPLATE, sample_config_path,
+                            parameter_names=param_names, condition=condition)
+                run_ABM(sample_config_path)
 
         # After each run, read output and calculate error
         with open('output/Output_Biomarkers.csv', 'rt') as f:
@@ -239,15 +281,15 @@ def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataF
             day7_percentdiff = experimental_df.loc[(group_name, 168), 'small_scaffold_percent_diff']
             day21_percentdiff = experimental_df.loc[(group_name, 504), 'small_scaffold_percent_diff']
 
-            print(f"Day 7: aggrecan={temp[TICKS_PER_DAY * 7][6]} total cells={temp[TICKS_PER_DAY * 7][7]} cell viability={temp[TICKS_PER_DAY * 7][18]} % diff={temp[TICKS_PER_DAY * 7][19]}")
-            print(f"Day 21: aggrecan={temp[TICKS_PER_DAY * 21][6]} total cells={temp[TICKS_PER_DAY * 21][7]} cell viability={temp[TICKS_PER_DAY * 21][18]} % diff={temp[TICKS_PER_DAY * 21][19]}")
+            print(f"Day 7: aggrecan={temp[TICKS_PER_DAY * 7][7} total cells={temp[TICKS_PER_DAY * 7][8]} cell viability={temp[TICKS_PER_DAY * 7][20]} % diff={temp[TICKS_PER_DAY * 7][21]}")
+            print(f"Day 21: aggrecan={temp[TICKS_PER_DAY * 21][7]} total cells={temp[TICKS_PER_DAY * 21][8]} cell viability={temp[TICKS_PER_DAY * 21][20]} % diff={temp[TICKS_PER_DAY * 21][21]}")
 
-            cellviability_day7_errors.append(error(day7_cellviability, float(temp[TICKS_PER_DAY * 7][19])))
-            percentdiff_day7_errors.append(error(day7_percentdiff, float(temp[TICKS_PER_DAY * 7][20])))
+            cellviability_day7_errors.append(error(day7_cellviability, float(temp[TICKS_PER_DAY * 7][20])))
+            percentdiff_day7_errors.append(error(day7_percentdiff, float(temp[TICKS_PER_DAY * 7][21])))
             
-            aggrecan_day21_errors.append(error(day21_aggrecan, float(temp[TICKS_PER_DAY * 21][6])))
-            cellviability_day21_errors.append(error(day21_cellviability, float(temp[TICKS_PER_DAY * 21][19])))
-            percentdiff_day21_errors.append(error(day21_percentdiff, float(temp[TICKS_PER_DAY * 21][20])))
+            aggrecan_day21_errors.append(error(day21_aggrecan, float(temp[TICKS_PER_DAY * 21][7])))
+            cellviability_day21_errors.append(error(day21_cellviability, float(temp[TICKS_PER_DAY * 21][20])))
+            percentdiff_day21_errors.append(error(day21_percentdiff, float(temp[TICKS_PER_DAY * 21][21])))
 
     # Assign the mean error over all runs
     base = config_index * 5
@@ -260,31 +302,30 @@ def run_with_scaffold(config_file: str, Y: np.ndarray, experimental_df: pd.DataF
 def ABM(x):
 
     global Nfeval
-
     global experimental_df_indexed
     # Put sampled parameters into text files
     sam = np.asarray(temp_sample)
     for idx, param in enumerate(params):
         sam[param] = x[idx]
-
-    # Put sampled parameters into text files
-    np.savetxt("Sample.txt", [sam], delimiter='\t')
+    param_values = sam.tolist()
 
     Y = np.zeros(10)
 
-    run_with_scaffold("configFiles/config_scaffold_High.txt", Y, experimental_df_indexed, config_index=0)
+    run_with_scaffold("high", Y, experimental_df_indexed, config_index=0, 
+                      param_values=param_values, param_names=param_names)
 
     if args.snapshots:
-        save_snapshot(Nfeval, "config_scaffold_High")
+        save_snapshot(Nfeval, "high")
         if Nfeval % SNAPSHOT_INTERVAL == 0:
-            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_scaffold_High.csv')
+            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_high.csv')
 
-    run_with_scaffold("configFiles/config_scaffold_Low.txt", Y, experimental_df_indexed, config_index=1)
+    run_with_scaffold("low", Y, experimental_df_indexed, config_index=1,
+                       param_values=param_values, param_names=param_names)
 
     if args.snapshots:
-        save_snapshot(Nfeval, "config_scaffold_Low")
+        save_snapshot(Nfeval, "low")
         if Nfeval % SNAPSHOT_INTERVAL == 0:
-            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_scaffold_Low.csv')
+            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_low.csv')
 
     # Dynamically create string based on the number of parameters
     format_str = formatted_string(Nfeval, x, Y)     
@@ -296,24 +337,22 @@ def ABM(x):
 
 if __name__ == "__main__":
     # Create parameter names
-    numpar = 69 # total number of parameters
-    names = ["" for j in range(numpar)]
+    df = pd.read_excel("parameters.xlsx")
+    numpar = len(df)
+    param_names = df["Parameter Name"].tolist()
 
     # Update array with selected parameters
     #params = extract_n_params(method=method, n=n)
     #params = [i for i in range(numpar)]
-    params = [7, 11, 15, 20, 21, 30, 35, 36, 37, 38] #testing with 10 important params
-
-    df = pd.read_excel(r'Sensitivity Analysis.xlsx') # read parameter bounds
-
-    for i in range(numpar):
-        names[i] = "x" + str(i)
-
+    #params = [7, 11, 15, 20, 21, 30, 35, 36, 37, 38] #testing with 10 important params
+    # Parameters to optimize: every row with a blank "Vary?" column.
+    params = extract_varying_param_indices(df)
+    
     # Read bounds
-    bounds = df[["Lower bound", "Upper bound"]].to_numpy()
+    bounds = df[["Lower", "Upper"]].to_numpy()
 
     # Read default values
-    temp_sample_1 = df[["Default Value"]].to_numpy()
+    temp_sample_1 = df[["Mean"]].to_numpy()
     global temp_sample
     temp_sample = np.reshape(temp_sample_1,numpar)
 

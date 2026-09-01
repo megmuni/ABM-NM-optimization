@@ -239,8 +239,8 @@ def extract_output_metrics(output_file: Path) -> dict[str, float]:
     df = pd.read_csv(output_file)
     day3_tick = 132
     day6_tick = 264
-    day3_row = df[df["clock"] == day3_tick]
-    day6_row = df[df["clock"] == day6_tick]
+    day3_row = df[df["clock (30 min)"] == day3_tick]
+    day6_row = df[df["clock (30 min)"] == day6_tick]
     return {
         "day_3_collagen": day3_row["Collagen (ug)"].values[0],
         "day_3_cells": day3_row["Total Cells"].values[0],

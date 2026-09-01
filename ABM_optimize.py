@@ -29,12 +29,12 @@ TICKS_PER_DAY = 44
 parser = argparse.ArgumentParser(description='Run ABM optimization.')
 
 parser.add_argument('--n', type=int, default=5, help='Number of parameters to optimize')
-parser.add_argument('--method', type=str, default='Random Forest', help='Method to use for parameter importance ranking')
+#parser.add_argument('--method', type=str, default='Random Forest', help='Method to use for parameter importance ranking')
 parser.add_argument('--snapshots', type=bool, default=False, help='Save snapshots of the biomarker values')
 
 args = parser.parse_args() 
 n = args.n 
-method = args.method
+#method = args.method
 # ==========================
 # ==========================
 
@@ -270,28 +270,21 @@ def ABM(x):
     # Put sampled parameters into text files
     np.savetxt("Sample.txt", [sam], delimiter='\t')
 
-    Y = np.zeros(12)
+    Y = np.zeros(10)
 
-    run_with_scaffold("configFiles/config_Scaffold_GH2.txt", Y, experimental_df_indexed, config_index=0)
-
-    if args.snapshots:
-        save_snapshot(Nfeval, "config_Scaffold_GH2")
-        if Nfeval % SNAPSHOT_INTERVAL == 0:
-            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH2.csv')
-
-    run_with_scaffold("configFiles/config_Scaffold_GH5.txt", Y, experimental_df_indexed, config_index=1)
+    run_with_scaffold("configFiles/config_scaffold_High.txt", Y, experimental_df_indexed, config_index=0)
 
     if args.snapshots:
-        save_snapshot(Nfeval, "config_Scaffold_GH5")
+        save_snapshot(Nfeval, "config_scaffold_High")
         if Nfeval % SNAPSHOT_INTERVAL == 0:
-            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH5.csv')
+            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_scaffold_High.csv')
 
-    run_with_scaffold("configFiles/config_Scaffold_GH10.txt", Y, experimental_df_indexed, config_index=2)
+    run_with_scaffold("configFiles/config_scaffold_Low.txt", Y, experimental_df_indexed, config_index=1)
 
     if args.snapshots:
-        save_snapshot(Nfeval, "configFiles/config_Scaffold_GH10")
+        save_snapshot(Nfeval, "config_scaffold_Low")
         if Nfeval % SNAPSHOT_INTERVAL == 0:
-            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_Scaffold_GH10.csv')
+            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_config_scaffold_Low.csv')
 
     # Dynamically create string based on the number of parameters
     format_str = formatted_string(Nfeval, x, Y)     
@@ -303,11 +296,13 @@ def ABM(x):
 
 if __name__ == "__main__":
     # Create parameter names
-    numpar = 75 # total number of parameters
+    numpar = 69 # total number of parameters
     names = ["" for j in range(numpar)]
 
     # Update array with selected parameters
-    params = extract_n_params(method=method, n=n)
+    #params = extract_n_params(method=method, n=n)
+    #params = [i for i in range(numpar)]
+    params = [7, 11, 15, 20, 21, 30, 35, 36, 37, 38] #testing with 10 important params
 
     df = pd.read_excel(r'Sensitivity Analysis.xlsx') # read parameter bounds
 

@@ -2,7 +2,7 @@ import pandas as pd
 import json
 import numpy as np
 from pathlib import Path
-from ABM import extract_n_param_names, create_sample_file, run_ABM, extract_output_metrics
+from ABM import create_sample_file, run_ABM, extract_output_metrics
 
 # ======================
 # Check that the ABM model is working as expected

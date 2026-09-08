@@ -84,7 +84,7 @@ def generate_param_df() -> pd.DataFrame:
     df = df.iloc[:n_par].reset_index(drop=True)
     return df
 
-def mutate_parameters(params: pd.DataFrame, mutate_params: list[str]) -> pd.DataFrame:
+def mutate_parameters(params: pd.DataFrame) -> pd.DataFrame:
     """
     Mutate the given parameters in the DataFrame.
     Rows marked 'N' in the 'Vary?' column are held at their Mean value

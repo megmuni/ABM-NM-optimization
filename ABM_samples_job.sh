@@ -3,8 +3,9 @@
 #
 #SBATCH --account=rrg-nicoleli
 #SBATCH --time=0-06:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=8000M
+#SBATCH --cpus-per-task=2
+#SBATCH --gpus=h100_1g.10gb:1
+#SBATCH --mem=16000M
 #SBATCH --output=logs/gensamples_%A_%a.out
 #SBATCH --error=logs/gensamples_%A_%a.err
 #SBATCH --mail-user=${EMAIL}

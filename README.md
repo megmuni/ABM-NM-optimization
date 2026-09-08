@@ -55,7 +55,7 @@ Joins `sample_parameters.csv` with each task's metrics into `generated_samples_w
 python ABM_generate_samples.py run --task 7
 ```
 
-# Part 2: Running Verification
+## Part 2: Running Verification
 
 To verify the ABM model outputs against the previously generated results, run:
 
@@ -69,15 +69,15 @@ Useful flags:
 - --limit N: for a very quick test
 - --samples / --out / --template: to override paths if necessary
 
-# Part 3: Parameter optimization
+## Part 3: Parameter optimization
 
-## Overview
+### Overview
 
 **Goal**: To determine the values of parameters that minimize the error of ABM outputs
 
 **Logistics**: Uses scipy.optimize package from Python (https://docs.scipy.org/doc/scipy/reference/optimize.html)
 
-## Setup
+### Setup
 
 1. Update the Sensitivity Analysis.xslx file with your parameters
 2. Update the `ABM_optimize.py` file as needed.
@@ -97,7 +97,7 @@ Useful flags:
    a. Make sure testRun in bin has execution permissions, “chmod +x testRun”
 5. Create a subfolder named output and a subfolder under output named SensitivityAnalysis
 
-## Execution
+### Execution
 
 1. Export your email address for notifications like so:
 
@@ -113,13 +113,13 @@ sbatch --mail-user $EMAIL ABM_optimize_job.sh [optional args]
 
 3. Results will be outputed in `output`. You should also see a tarball archive of the entire directory.
 
-## Analysis
+### Analysis
 
 - Output includes all the variables you included for each ABM execution after the “print” statement, which you can use to monitor how they change with optimization
 - Output ends with results of optimization, i.e. optimal parameter values, minimum error, and stopping criteria met
 - We are typically most interested in evaluating how much error decreased (absolute and % decrease in error)
 
-## Changing the number of parameters
+### Changing the number of parameters
 
 You can optionally submit the job with a number of parameters and a method for ranking parameter importance. The method must be present as a column title in `Sensitivity Analysis.xlsx`.
 

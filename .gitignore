@@ -17,5 +17,9 @@ bin/*
 output/
 verification_results.json
 optimization_results.json
+sample_parameters.csv
+configFiles/samples/
+configFiles/simulation_config_sample.json
+logs/
 
 __pycache__/

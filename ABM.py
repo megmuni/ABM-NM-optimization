@@ -31,6 +31,91 @@ CONDITION_FIELDS = {
     "high": {"world_init:alginate:high_mw_ratio": 1, "world_init:alginate:low_mw_ratio": 0},
     "low": {"world_init:alginate:high_mw_ratio": 0, "world_init:alginate:low_mw_ratio": 1},
 }
+
+# ---------------------------------------------------------------------
+# Shared paths/constants
+#
+# Every script in this repo (ABM_generate_samples, ABM_optimize,
+# ABM_verify) imports these when necessary
+# ---------------------------------------------------------------------
+
+CONFIG_TEMPLATE = Path("simulation_config.template.json")
+SAMPLE_CONFIG_PATH = Path("configFiles/simulation_config_sample.json")
+OUTPUT_DIR = Path("output")
+OUTPUT_BIOMARKERS = OUTPUT_DIR / "Output_Biomarkers.csv"
+PARAMETER_FILE = Path("parameters.xlsx")
+CONDITIONS = list(CONDITION_FIELDS.keys())
+
+CLOCK_COL = "clock (30 min)"
+TICKS_PER_DAY = 48
+
+# Column names taken directly from the Output_Biomarkers.csv header row
+CLOCK_COL = "clock (30 min)"
+COLLAGEN_COL = "Collagen (ug)"
+TOTAL_CELLS_COL = "Total Cells"
+AGGRECAN_COL = "Aggrecan (ug)"
+CELL_VIABILITY_COL = "Viability Rate(%)"
+PERCENT_DIFF_COL = "Differentiation (%)"
+
+# 30-minute ticks, so 48 ticks per simulated day
+TICKS_PER_DAY = 48
+
+# ---------------------------------------------------------------------
+# This list of output metrics is shared across all the files in the 
+# optimization protocol. ONLY edit here whenever you want to change what is
+# read out of the ABM! 
+
+OUTPUT_METRICS = [
+    # Day 7 -- fitted against experimental data
+    {"day": 7, "column": CELL_VIABILITY_COL, "label": "day_7_cell_viability",
+     "exp_column": "small_scaffold_cell_viability"},
+    {"day": 7, "column": PERCENT_DIFF_COL, "label": "day_7_percent_diff",
+     "exp_column": "small_scaffold_percent_diff"},
+    # Day 7 -- tracked only (no experimental data at this timepoint)
+    {"day": 7, "column": AGGRECAN_COL, "label": "day_7_aggrecan"},
+    {"day": 7, "column": TOTAL_CELLS_COL, "label": "day_7_cells"},
+ 
+    # Day 21 -- fitted against experimental data
+    {"day": 21, "column": AGGRECAN_COL, "label": "day_21_aggrecan",
+     "exp_column": "small_scaffold_aggrecan_ug"},
+    {"day": 21, "column": CELL_VIABILITY_COL, "label": "day_21_cell_viability",
+     "exp_column": "small_scaffold_cell_viability"},
+    {"day": 21, "column": PERCENT_DIFF_COL, "label": "day_21_percent_diff",
+     "exp_column": "small_scaffold_percent_diff"},
+    # Day 21 -- tracked only
+    {"day": 21, "column": TOTAL_CELLS_COL, "label": "day_21_cells"},
+]
+
+# ---------------------------------------------------------------------
+
+def _slug(column: str) -> str:
+    """
+    Turn a biomarker column name into a label-safe slug, e.g.
+    "Collagen (ug)" -> "collagen", "Viability Rate(%)" -> "viability_rate".
+    """
+    base = re.sub(r"\(.*?\)", "", column)  # drop units
+    base = re.sub(r"[^0-9A-Za-z]+", "_", base).strip("_")
+    return base.lower()
+
+def metric_label(metric: dict) -> str:
+    """
+    The label for a metric spec: its explicit "label" if given, otherwise
+    "day_<day>_<column slug>".
+    """
+    return metric.get("label") or f"day_{metric['day']}_{_slug(metric['column'])}"
+
+# Metric labels, in order and derived from OUTPUT_METRICS
+OUTPUT_METRIC_KEYS = [metric_label(m) for m in OUTPUT_METRICS]
+ 
+# subset of metrics that ABM_optimize fits: those with experimental data to
+# compare against. Each contributes one squared-error term per condition
+FITTED_METRICS = [m for m in OUTPUT_METRICS if m.get("exp_column")]
+FITTED_METRIC_KEYS = [metric_label(m) for m in FITTED_METRICS]
+ 
+# ticks needed to reach the latest day in OUTPUT_METRICS (+1 because tick
+# numbering starts at 0)
+METRICS_NUMTICKS = TICKS_PER_DAY * max(m["day"] for m in OUTPUT_METRICS) + 1
+
  
 def load_template_lines(path: Path) -> list[str]:
     with open(path, "r") as f:
@@ -54,7 +139,7 @@ def find_variable_line_entries(lines: list[str]) -> list[tuple[int, str]]:
     the entry would be (line_index, "cell:proliferation:hours_between_proliferation").
  
     This path is meant to match the "Parameter Name" column in
-    parameters.xlsx, so the two can be cross-validated.
+    parameters.xlsx, so the two can be cross-validated
     """
     entries = []
     stack: list[str] = []
@@ -94,7 +179,7 @@ def get_template_parameter_paths(template_file: Path) -> list[str]:
     """
     Return the ordered list of parameter_path values for a template's
     //-tagged "biology" fields. Useful for generating or validating the
-    "Parameter Name" column of parameters.xlsx.
+    "Parameter Name" column of parameters.xlsx
     """
     lines = load_template_lines(template_file)
     return [path for _, path in find_variable_line_entries(lines)]
@@ -230,41 +315,84 @@ def create_sample_file(
     
     with open(out_path, "w") as f:
         f.writelines(new_lines)
+        
+def extract_biomarkers_at_day(df: pd.DataFrame, day: int, source: str = "") -> pd.Series:
+    """
+    Return the Output_Biomarkers row for a given simulated day, looked up
+    by the clock column
+    """
+    tick = TICKS_PER_DAY * day
+    match = df[df[CLOCK_COL] == tick]
+    if match.empty:
+        raise ValueError(
+            f"No row in {source or 'the biomarker file'} with {CLOCK_COL} == "
+            f"{tick} (day {day}). Check that run_ABM's --numticks covers day "
+            f"{day} and that the simulation completed -- see output/stderr.txt."
+        )
+    return match.iloc[0]
 
-def extract_output_metrics(output_file: Path) -> dict[str, float]:
+
+def extract_output_metrics(output_file: Path, 
+                           metrics: list[dict] | None = None,
+                           ) -> dict[str, float]:
     """
     Extract output metrics from the ABM output_biomarkers.csv file.
-    Modify days and biomarkers here as needed (whatever you want to optimize against)
+    
+    Reads the (day, column) pairs declared in OUTPUT_METRICS at the top of
+    this file. Don't edit this function! If you need to change what 
+    metrics the pipeline scores, edit OUTPUT_METRICS directly!
+
+    Pass 'metrics' to override for a one-off extraction of a new metric
+    that you didn't declare in OUTPUT_METRICS.    
     """
+    metrics = OUTPUT_METRICS if metrics is None else metrics
+    
     df = pd.read_csv(output_file)
-    day3_tick = 132
-    day6_tick = 264
-    day3_row = df[df["clock (30 min)"] == day3_tick]
-    day6_row = df[df["clock (30 min)"] == day6_tick]
+    df.columns = [c.strip() for c in df.columns]
+    
+    missing = sorted({m["column"] for m in metrics} - set(df.columns))
+    if missing:
+        raise ValueError(
+            f"OUTPUT_METRICS refers to column(s) not present in {output_file}: "
+            f"{missing}.\nAvailable columns: {list(df.columns)}"
+        )
+    
+    # Fetch each needed day once, then pull every column for that day
+    rows = {
+        day: extract_biomarkers_at_day(df, day, str(output_file))
+        for day in sorted({m["day"] for m in metrics})
+    }
+    
     return {
-        "day_3_collagen": day3_row["Collagen (ug)"].values[0],
-        "day_3_cells": day3_row["Total Cells"].values[0],
-        "day_6_collagen": day6_row["Collagen (ug)"].values[0],
-        "day_6_cells": day6_row["Total Cells"].values[0],
+        metric_label(m): float(rows[m["day"]][m["column"]])
+        for m in metrics
     }
 
-def run_ABM(config_file: Path) -> None:
+def format_output_metrics(values: dict[str, float]) -> str:
+    """
+    One-line, human-readable rendering of an extract_output_metrics result
+    """
+    return ", ".join(f"{label}={values[label]:.4g}" for label in values)
+
+
+def run_ABM(config_file: Path, numticks: int = METRICS_NUMTICKS) -> None:
     """
     Run the ABM with a given JSON configuration file.
     """
-    stdout_file_name = "output/stdout.txt"
-    stderr_file_name = "output/stderr.txt"
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    stdout_file_name = OUTPUT_DIR / "stdout.txt"
+    stderr_file_name = OUTPUT_DIR / "stderr.txt"
     with open(stdout_file_name, "w") as stdout_file, open(stderr_file_name, "w") as stderr_file:  
         subprocess.call([
             "./bin/testRun",
             "--numticks",
-            "289", 
+            str(numticks), 
             "--inputfile",
             str(config_file),
             "--wxw",
-            "0.6",
+            "0.5",
             "--wyw",
-            "0.6",
+            "0.4",
             "--wzw",
-            "0.6"
+            "0.3"
         ], stdout=stdout_file, stderr=stderr_file)

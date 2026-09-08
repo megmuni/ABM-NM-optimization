@@ -1,5 +1,15 @@
 from pathlib import Path
-from ABM import create_sample_file, run_ABM, extract_output_metrics
+from ABM import (
+    create_sample_file,
+    run_ABM,
+    extract_output_metrics,
+    CONFIG_TEMPLATE,
+    SAMPLE_CONFIG_PATH,
+    OUTPUT_BIOMARKERS,
+    CONDITIONS,
+    PARAMETER_FILE,
+    format_output_metrics,
+)
 import numpy as np
 import pandas as pd
 from scipy.stats import truncnorm
@@ -15,7 +25,7 @@ from scipy.stats import truncnorm
 # ==================================================
 
 # --- Settings to edit -------------------------------------------------
-input_file = "parameters.xlsx"
+input_file = PARAMETER_FILE
 sheet_name = "Sheet1"
 n_par = 67  # Number of parameters
 rng_seed = None  # Set an int here for reproducibility, or leave None
@@ -102,45 +112,51 @@ def mutate_parameters(params: pd.DataFrame, mutate_params: list[str]) -> pd.Data
 
 def generate_samples(n_samples: int, method: str) -> pd.DataFrame:
     """
-    Run the full pipeline to generate parameter sets with expected outputs.
+    Run the full pipeline to generate parameter sets with expected outputs
+    
+    Each sample run is once per scaffold condition (high/low MW alginate),
+    so n_samples parameter sets produce n_samples * len(CONDITIONS) rows
+    
+    "Condition" column records which one so that ABM_verify can rebuild the
+    exact config that produced each row
     """
     param_df = generate_param_df()
     num_varying = param_df["Vary?"].apply(
     lambda v: not (isinstance(v, str) and v.strip().upper() == "N")).sum()
     rows_list = []
-    
-    #JSON template containing all of the config info (incl. the bio
-    #params to be varied)
-    config_template = Path("configFiles/simulation_config.template.json")
-    
+ 
     param_names = param_df["Parameter Name"].tolist()
-    conditions = ["high", "low"]
-    
-    total_generated = 0
-    # set value column to default values
-    # param_df["value"] = param_df["Default Value"]
+ 
     for i in range(n_samples):
         sample_df = mutate_parameters(param_df)
         param_values = sample_df["value"].tolist()
-        
-        for condition in conditions:
-            sample_config_path = Path("configFiles/simulation_config_sample.json")
-            create_sample_file(param_values, config_template, sample_config_path, parameter_names=param_names) #make sample param set to run ABM
-        
-            run_ABM(sample_config_path) #run the ABM with the sample
-            metrics = extract_output_metrics(Path("output/Output_Biomarkers.csv"))
+ 
+        for condition in CONDITIONS:
+            # Write the merged JSON config (the sampled biology params plus
+            # this sample's scaffold condition)
+            create_sample_file(
+                param_values,
+                CONFIG_TEMPLATE,
+                SAMPLE_CONFIG_PATH,
+                parameter_names=param_names,
+                condition=condition,
+            )
+ 
+            run_ABM(SAMPLE_CONFIG_PATH)
+            metrics = extract_output_metrics(OUTPUT_BIOMARKERS)
             result_row = {
                 "sample_id": i,
+                "condition": condition,
                 "num_params_varied": num_varying,
                 **{name: param_values[j] for j, name in enumerate(param_names)},
                 **metrics
             }
             rows_list.append(result_row)
-            total_generated += 1
-
+            print(f"Generated sample {i} ({condition}): {metrics}")
+ 
     result_df = pd.DataFrame(rows_list)
     return result_df
-
+ 
 if __name__ == "__main__":
     df = generate_samples(n_samples=10)
     df.to_csv("generated_samples_with_outputs.csv", index=False)

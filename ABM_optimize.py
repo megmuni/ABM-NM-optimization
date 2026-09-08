@@ -1,49 +1,97 @@
-from scipy.optimize import minimize
-from typing import Any
-from pathlib import Path
-import shutil
+import argparse
+import csv
+import json
 import os
+import shutil
+from pathlib import Path
+from typing import Any, Callable
+
 import numpy as np
 import pandas as pd
-import subprocess
-import csv
-import argparse 
+from scipy.optimize import minimize
 
-from ABM import create_sample_file, run_ABM
+from ABM import (
+    create_sample_file,
+    run_ABM,
+    extract_output_metrics,
+    metric_label,
+    CONFIG_TEMPLATE,
+    SAMPLE_CONFIG_PATH,
+    OUTPUT_BIOMARKERS,
+    OUTPUT_DIR,
+    PARAMETER_FILE,
+    CONDITIONS,
+    TICKS_PER_DAY,
+    OUTPUT_METRICS,
+    FITTED_METRICS,
+    FITTED_METRIC_KEYS,
+    METRICS_NUMTICKS,
+)
 
 # ==========================
 # CONSTANTS
 # TODO: Move these into a config file.
 SNAPSHOT_INTERVAL = 5
-TICKS_PER_DAY = 48
-
-CONFIG_TEMPLATE = Path("configFiles/simulation_config.template.json")
 
 CONDITION_TO_GROUP = {
     "high": "config_scaffold_High",
     "low": "config_scaffold_Low",
 }
+
+# Objective function's error terms
+# These come from OUTPUT_METRICS in ABM.py, specifically those carrying
+# an "exp_column" (i.e. there is exp data for that metric that we can fit
+# against).
+TARGETS = FITTED_METRICS
+ 
+# Simulate far enough to cover the latest day any metric needs
+NUMTICKS = METRICS_NUMTICKS
+ 
+SENSITIVITY_DIR = OUTPUT_DIR / "SensitivityAnalysis"
 # ==========================
 
 # ==========================
 # Command line arguments
-# n: number of parameters to optimize
-# method: method to use for parameter importance ranking, must
-# match the column name in the excel file
-# "parameters.xlsx"
-# ==========================
-parser = argparse.ArgumentParser(description='Run ABM optimization.')
 
-parser.add_argument('--n', type=int, default=5, help='Number of parameters to optimize')
-#parser.add_argument('--method', type=str, default='Random Forest', help='Method to use for parameter importance ranking')
-parser.add_argument('--snapshots', type=bool, default=False, help='Save snapshots of the biomarker values')
-
-args = parser.parse_args() 
-n = args.n 
-#method = args.method
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run ABM Nelder-Mead optimization.")
+ 
+    parser.add_argument(
+        "--mode", choices=["joint", "separate"], default="joint",
+        help=(
+            "How to handle the scaffold conditions. 'joint' (default) runs one "
+            "optimization whose objective is the error summed over every "
+            "condition, giving a single parameter set that fits all of them. "
+            "'separate' runs an independent optimization per condition, giving "
+            "one parameter set and one error per condition"
+        )
+    )
+    parser.add_argument(
+        "--conditions", nargs="+", default=CONDITIONS, choices=CONDITIONS,
+        help="Which scaffold conditions to fit (default: all)"
+    )
+    parser.add_argument(
+        "--iters", type=int, default=3,
+        help="ABM runs per condition per function evaluation, averaged"
+    )
+    parser.add_argument(
+        "--maxiter", type=int, default=50,
+        help="Maximum Nelder-Mead iterations"
+    )
+    parser.add_argument(
+        "--tol", type=float, default=1e-4,
+        help="Nelder-Mead convergence tolerance"
+    )
+    parser.add_argument(
+        "--snapshots", action="store_true",
+        help="Save periodic snapshots of the biomarker values"
+    )
+    parser.add_argument(
+        "--out", type=Path, default=OUTPUT_DIR / "optimization_results.json",
+        help="Where to write the optimization results"
+    )
+    return parser.parse_args(argv)
 # ==========================
-# ==========================
-
 
 def small_scaffold_adjustment_cells(value: float) -> float:
     """
@@ -157,7 +205,7 @@ def formatted_string(Nfeval, x, Y) -> str:
     format_str += f"{np.sum(Y):3.6f}"
     return format_str
 
-def extract_varying_param_indices() -> list:
+def extract_varying_param_indices(df: pd.DataFrame) -> list:
     """
     Extract the indices of every parameter that should be optimized --
     i.e. every row in parameters.xlsx whose "Vary?" column is
@@ -165,23 +213,24 @@ def extract_varying_param_indices() -> list:
     sampling/RF pipeline (blank = vary, any non-blank value e.g. "N" =
     don't vary, use the default).
     """
-    df = pd.read_excel("parameters.xlsx")
- 
-    # Same robust "blank vs non-blank" check used upstream: treat any
-    # non-empty value in "Vary?" as "don't vary", rather than matching the
-    # literal string "N" (robust to whitespace/case/type quirks in Excel).
     vary_mask = df["Vary?"].apply(lambda v: not (pd.notna(v) and str(v).strip() != ""))
- 
     varying_rows = df[vary_mask]
  
     if varying_rows.empty:
         raise ValueError('No parameters found with a blank "Vary?" column -- nothing to optimize.')
  
-    param_nums = [int(p) for p in varying_rows["Parameter Number"].tolist()]
- 
-    print(f"Optimizing {len(param_nums)} parameters (Vary? blank): {param_nums}")
- 
-    return param_nums
+    param_idxs = [int(p) - 1 for p in varying_rows["Parameter Number"].tolist()]
+
+    if any(i < 0 or i >= len(df) for i in param_idxs):
+        raise ValueError(
+            '"Parameter Number" values in parameters.xlsx are out of range; '
+            "they must be 1-indexed and contiguous with the parameter rows."
+        )
+
+    print(f"Optimizing {len(param_idxs)} parameters (Vary? blank), rows: "
+          f"{[i + 1 for i in param_idxs]}")
+
+    return param_idxs
 
 def extract_row_as_dict(csv_path: str, row_index: int) -> dict[str, Any]:
     """
@@ -196,223 +245,320 @@ def extract_row_as_dict(csv_path: str, row_index: int) -> dict[str, Any]:
                 return {k: float(v) for k, v in row.items()}
     return {}
 
-def extract_biomarkers_at_tick(csv_path: str, tick: int) -> dict[str, float]:
+def save_snapshot(nfeval: int, condition: str):
     """
-    Read Output_Biomarkers.csv and return the biomarker values at the row
-    whose clock column equals `tick`
+    Save snapshot for this condition to a CSV file.
     """
-    df = pd.read_csv(csv_path)
-    row = df[df[CLOCK_COL] == tick]
-    if row.empty:
-        raise ValueError(f"No row found in {csv_path} with {CLOCK_COL} == {tick}")
+    rows = []
+    for day in sorted({m["day"] for m in OUTPUT_METRICS}):
+        snapshot = extract_row_as_dict(str(OUTPUT_BIOMARKERS), TICKS_PER_DAY * day)
+        if not snapshot:
+            continue
+        snapshot["day"] = day
+        snapshot["nfeval"] = nfeval
+        snapshot["condition"] = condition
+        rows.append(snapshot)
  
-    return {
-        "aggrecan": float(row[AGGRECAN_COL].values[0]),
-        "total_cells": float(row[TOTAL_CELLS_COL].values[0]),
-        "cell_viability": float(row[CELL_VIABILITY_COL].values[0]),
-        "percent_diff": float(row[PERCENT_DIFF_COL].values[0]),
-    }
-
-# Column names taken directly from Output_Biomarkers.csv header row
-CLOCK_COL = "clock (30 min)"
-AGGRECAN_COL = "Aggrecan (ug)"
-TOTAL_CELLS_COL = "Total Cells"
-CELL_VIABILITY_COL = "Viability Rate(%)"
-PERCENT_DIFF_COL = "Differentiation (%)"
-
-def save_snapshot(nfeval: int, config: str):
-    """
-    Save snapshot for this configuration to a CSV file.
-    """
-    snapshot_data_day_7 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 7)
-    snapshot_data_day_21 = extract_row_as_dict('output/Output_Biomarkers.csv', TICKS_PER_DAY * 21)
-    snapshot_data_day_7_with_nfeval = dict(snapshot_data_day_7)
-    snapshot_data_day_7_with_nfeval['nfeval'] = nfeval
-    snapshot_data_day_7_with_nfeval['config'] = config
-
-    snapshot_data_day_21_with_nfeval = dict(snapshot_data_day_21)
-    snapshot_data_day_21_with_nfeval['nfeval'] = nfeval
-    snapshot_data_day_21_with_nfeval['config'] = config
-    fieldnames = list(snapshot_data_day_7.keys()) + ['nfeval'] + ['config']
-    with open('output/snapshots/day_snapshots.csv', 'a', newline='') as snapshots_file:
+    if not rows:
+        return
+ 
+    fieldnames = list(rows[0].keys())
+    snapshot_path = OUTPUT_DIR / "snapshots" / "day_snapshots.csv"
+    with open(snapshot_path, 'a', newline='') as snapshots_file:
         writer = csv.DictWriter(snapshots_file, fieldnames=fieldnames)
         if snapshots_file.tell() == 0:
             writer.writeheader()
-        writer.writerow(snapshot_data_day_7_with_nfeval)
-        writer.writerow(snapshot_data_day_21_with_nfeval)
+        writer.writerows(rows)
 
-def run_with_scaffold(condition: str, Y: np.ndarray, experimental_df: pd.DataFrame, config_index: int, param_values: list, param_names: list, num_iters: int = 3):
+def run_with_scaffold(
+    condition: str,
+    experimental_df: pd.DataFrame,
+    param_values: list,
+    param_names: list,
+    nfeval: int,
+    num_iters: int = 3,
+) -> dict[str, float]:
     """
-    Run the ABM simulation for one condition ("high" or "low"), `num_iters`
-    times, and record the mean squared error against experimental data
-    into Y for this condition
-
+    Run the ABM with the specified scaffold condition ("high" or "low")
+    num_iters times, and return the mean squared error per fitted target,
+    keyed by the target's label.
+ 
+    Every metric in OUTPUT_METRICS is read and printed each run, but only
+    those with an "exp_column" (i.e. TARGETS) produce error terms
     """
-    cellviability_day7_errors = []
-    percentdiff_day7_errors = []
-    cellviability_day21_errors = []
-    aggrecan_day21_errors = []
-    percentdiff_day21_errors = []
+    group_name = CONDITION_TO_GROUP[condition]
+    errors_per_target: dict[str, list[float]] = {
+        metric_label(t): [] for t in TARGETS
+    }
  
-    sample_config_path = Path("configFiles/simulation_config_sample.json")
+    for iteration in range(num_iters):
+        print(f"Running iteration {iteration + 1}/{num_iters} for condition '{condition}'")
  
-    for iter in range(num_iters):
-        print(f"Running iteration {iter + 1} for condition {condition}")
+        with open(SENSITIVITY_DIR / "stdout.txt", 'a') as stdout_file, \
+             open(SENSITIVITY_DIR / "stderr.txt", 'a') as stderr_file:
+            banner = (
+                "\n\n******************************\n"
+                f"*** MODEL EXECUTION #{nfeval} ({condition}) ***\n"
+                "******************************\n"
+            )
+            stdout_file.write(banner)
+            stderr_file.write(banner)
  
-        with open(stdout_file_name, 'a') as stdout_file:
-            stdout_file.write(f"\n\n******************************\n*** MODEL EXECUTION #{Nfeval} ***\n******************************\n")
-        with open(stderr_file_name, 'a') as stderr_file:
-            stderr_file.write(f"\n\n******************************\n*** MODEL EXECUTION #{Nfeval} ***\n******************************\n")
+        create_sample_file(
+            param_values, CONFIG_TEMPLATE, SAMPLE_CONFIG_PATH,
+            parameter_names=param_names, condition=condition,
+        )
+        run_ABM(SAMPLE_CONFIG_PATH, numticks=NUMTICKS)
  
-        # merge this iteration's varying parameter values into the single
-        # template AND apply this condition's high/low scaffold switch
-        create_sample_file(param_values, CONFIG_TEMPLATE, sample_config_path,
-                            parameter_names=param_names, condition=condition)
+        # Read every metric in OUTPUT_METRICS in one pass, keyed by label
+        simulated = extract_output_metrics(OUTPUT_BIOMARKERS)
+        print(f"  {condition}: " + ", ".join(
+            f"{label}={value:.4g}" for label, value in simulated.items()
+        ))
  
-        run_ABM(sample_config_path)
+        # Error terms come from the fitted subset only
+        for target in TARGETS:
+            label = metric_label(target)
+            expected = float(
+                experimental_df.loc[(group_name, target["day"] * 24), target["exp_column"]]
+            )
+            errors_per_target[label].append(error(expected, simulated[label]))
  
-        # experimental_config.csv "group" column uses the old scaffold
-        # config file names ("config_scaffold_High"/"config_scaffold_Low"),
-        # not the plain condition string; map through CONDITION_TO_GROUP
-        group_name = CONDITION_TO_GROUP[condition]
-        day7_cellviability = experimental_df.loc[(group_name, 168), 'small_scaffold_cell_viability']
-        day21_cellviability = experimental_df.loc[(group_name, 504), 'small_scaffold_cell_viability']
-        day21_aggrecan = experimental_df.loc[(group_name, 504), 'small_scaffold_aggrecan_ug']
-        day7_percentdiff = experimental_df.loc[(group_name, 168), 'small_scaffold_percent_diff']
-        day21_percentdiff = experimental_df.loc[(group_name, 504), 'small_scaffold_percent_diff']
+    # Mean error over all runs
+    return {label: float(np.mean(errs)) for label, errs in errors_per_target.items()}
+
+def make_objective(
+    conditions: list[str],
+    params: list[int],
+    default_values: np.ndarray,
+    param_names: list[str],
+    experimental_df: pd.DataFrame,
+    args: argparse.Namespace,
+) -> Callable[[np.ndarray], float]:
+    """
+    Build the Nelder-Mead objective function.
  
-        day7 = extract_biomarkers_at_tick('output/Output_Biomarkers.csv', TICKS_PER_DAY * 7)
-        day21 = extract_biomarkers_at_tick('output/Output_Biomarkers.csv', TICKS_PER_DAY * 21)
+    The returned function evaluates the ABM once per condition in
+    `conditions` and returns the total SSE summed over all of them. Pass a
+    single condition for a per-condition fit, or every condition for a
+    joint fit -- the maths is the same, only the length of `conditions`
+    differs.
+    """
+    state = {"nfeval": 1, "history": []}
  
-        print(f"Day 7: aggrecan={day7['aggrecan']} total cells={day7['total_cells']} "
-              f"cell viability={day7['cell_viability']} % diff={day7['percent_diff']}")
-        print(f"Day 21: aggrecan={day21['aggrecan']} total cells={day21['total_cells']} "
-              f"cell viability={day21['cell_viability']} % diff={day21['percent_diff']}")
+    def objective(x: np.ndarray) -> float:
+        nfeval = state["nfeval"]
  
-        cellviability_day7_errors.append(error(day7_cellviability, day7['cell_viability']))
-        percentdiff_day7_errors.append(error(day7_percentdiff, day7['percent_diff']))
+        # Start from the spreadsheet defaults and overwrite only the
+        # parameters being optimized with the simplex's current values
+        sam = np.array(default_values, dtype=float)
+        for idx, param in enumerate(params):
+            sam[param] = x[idx]
+        param_values = sam.tolist()
  
-        aggrecan_day21_errors.append(error(day21_aggrecan, day21['aggrecan']))
-        cellviability_day21_errors.append(error(day21_cellviability, day21['cell_viability']))
-        percentdiff_day21_errors.append(error(day21_percentdiff, day21['percent_diff']))
+        errors_by_condition: dict[str, dict[str, float]] = {}
  
-    base = config_index * 5
-    Y[base + 0] = np.mean(cellviability_day7_errors)
-    Y[base + 1] = np.mean(percentdiff_day7_errors)
-    Y[base + 2] = np.mean(aggrecan_day21_errors)
-    Y[base + 3] = np.mean(cellviability_day21_errors)
-    Y[base + 4] = np.mean(percentdiff_day21_errors)
+        for condition in conditions:
+            errors_by_condition[condition] = run_with_scaffold(
+                condition,
+                experimental_df,
+                param_values=param_values,
+                param_names=param_names,
+                nfeval=nfeval,
+                num_iters=args.iters,
+            )
+ 
+            if args.snapshots:
+                save_snapshot(nfeval, condition)
+                if nfeval % SNAPSHOT_INTERVAL == 0:
+                    shutil.copy(
+                        OUTPUT_BIOMARKERS,
+                        OUTPUT_DIR / "snapshots" / "biomarker_csvs" /
+                        f"snapshots_{nfeval}_{condition}.csv",
+                    )
+ 
+        # Flatten to the objective vector Y: one entry per target per
+        # condition, in (condition, target) order
+        Y = np.array([
+            errors_by_condition[condition][metric_label(target)]
+            for condition in conditions
+            for target in TARGETS
+        ])
+ 
+        total = float(np.sum(Y))
+ 
+        print(formatted_string(nfeval, x, Y))
+        print({c: errors_by_condition[c] for c in conditions})
+        print(f"  total SSE over {len(conditions)} condition(s) "
+              f"({', '.join(conditions)}): {total:.6f}")
+ 
+        state["history"].append({
+            "nfeval": nfeval,
+            "x": [float(v) for v in x],
+            "errors_by_condition": errors_by_condition,
+            "total_sse": total,
+        })
+        state["nfeval"] = nfeval + 1
+ 
+        return total  # SSE
+ 
+    objective.state = state
+    return objective
 
-
-def ABM(x):
-
-    global Nfeval
-    global experimental_df_indexed
-    # Put sampled parameters into text files
-    sam = np.asarray(temp_sample)
-    for idx, param in enumerate(params):
-        sam[param] = x[idx]
-    param_values = sam.tolist()
-
-    Y = np.zeros(10)
-
-    run_with_scaffold("high", Y, experimental_df_indexed, config_index=0, 
-                      param_values=param_values, param_names=param_names)
-
-    if args.snapshots:
-        save_snapshot(Nfeval, "high")
-        if Nfeval % SNAPSHOT_INTERVAL == 0:
-            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_high.csv')
-
-    run_with_scaffold("low", Y, experimental_df_indexed, config_index=1,
-                       param_values=param_values, param_names=param_names)
-
-    if args.snapshots:
-        save_snapshot(Nfeval, "low")
-        if Nfeval % SNAPSHOT_INTERVAL == 0:
-            shutil.copy('output/Output_Biomarkers.csv', f'output/snapshots/biomarker_csvs/snapshots_{Nfeval}_low.csv')
-
-    # Dynamically create string based on the number of parameters
-    format_str = formatted_string(Nfeval, x, Y)     
-    print(format_str)
-    Nfeval += 1 # Increment function evaluation count
-    print(Y)
-
-    return np.sum(Y) #SSE
-
-if __name__ == "__main__":
-    # Create parameter names
-    df = pd.read_excel("parameters.xlsx")
-    numpar = len(df)
-    param_names = df["Parameter Name"].tolist()
-
-    # Update array with selected parameters
-    #params = extract_n_params(method=method, n=n)
-    #params = [i for i in range(numpar)]
-    #params = [7, 11, 15, 20, 21, 30, 35, 36, 37, 38] #testing with 10 important params
-    # Parameters to optimize: every row with a blank "Vary?" column.
-    params = extract_varying_param_indices(df)
-    
-    # Read bounds
-    bounds = df[["Lower", "Upper"]].to_numpy()
-
-    # Read default values
-    temp_sample_1 = df[["Mean"]].to_numpy()
-    global temp_sample
-    temp_sample = np.reshape(temp_sample_1,numpar)
-
-    # Choose specific parameters
-    names_s = list(param_names[i] for i in params)
-    print(names_s)
-    bounds_s = bounds[np.array(params)]
-    print(bounds_s)
-    default_s = temp_sample[np.array(params)]
-    print(default_s)
-
-
-    # Open files
-    stdout_file_name = "output/SensitivityAnalysis/stdout.txt"
-    stderr_file_name = "output/SensitivityAnalysis/stderr.txt"
-    open(stdout_file_name, 'w').close()
-    open(stderr_file_name, 'w').close()
-
-    # Create snapshots file
-    if args.snapshots:
-        os.makedirs('output/snapshots', exist_ok=True)
-        open('output/snapshots/day_snapshots.csv', 'w').close()
-        os.makedirs('output/snapshots/biomarker_csvs', exist_ok=True)
-
-    # # # Run optimization # # #
-    Nfeval = 1
-
-    # Construct an initial simplex
-    selected_init = construct_simplex(bounds, params)
-
-    # Generate experimental values
-    global experimental_df_indexed
-    experimental_df = extract_small_scaffold_experimental(Path("experimental_config.csv"))
-    experimental_df_indexed = experimental_df.set_index(['group', 'time_hour'])
-
-    print("Experimental data:")
-    print(experimental_df_indexed)
-
+def run_optimization(
+    conditions: list[str],
+    params: list[int],
+    bounds: np.ndarray,
+    default_values: np.ndarray,
+    param_names: list[str],
+    experimental_df: pd.DataFrame,
+    args: argparse.Namespace,
+) -> dict:
+    """
+    Run one Nelder-Mead optimization fitting `conditions` together, and
+    return a summary dict of the result
+    """
+    label = "+".join(conditions)
+    print(f"\n{'=' * 70}\nOptimizing conditions: {label}\n{'=' * 70}")
+ 
+    objective = make_objective(
+        conditions, params, default_values, param_names, experimental_df, args
+    )
+ 
+    initial_simplex = construct_simplex(bounds, params)
+    selected_bounds = bounds[np.array(params)]
+    selected_defaults = default_values[np.array(params)]
+ 
     result = minimize(
-        ABM, 
-        default_s, 
-        method='nelder-mead', 
-        tol = 1e-4, 
-        bounds = bounds_s, 
+        objective,
+        selected_defaults,
+        method='nelder-mead',
+        tol=args.tol,
+        bounds=selected_bounds,
         options={
-            'maxiter': 50, 
-            'disp': True, 
-            'initial_simplex': selected_init, 
-            'return_all': True
+            'maxiter': args.maxiter,
+            'disp': True,
+            'initial_simplex': initial_simplex,
+            'return_all': True,
         }
     )
+ 
+    history = objective.state["history"]
+    initial_sse = history[0]["total_sse"] if history else None
+    final_sse = float(result.fun)
+ 
+    print(f"\nResults for {label}:")
+    print(f"  optimal parameters: {result.x}")
+    print(f"  minimum SSE: {final_sse}")
+    print(f"  stopping criterion: {result.message}")
+    if initial_sse:
+        print(f"  SSE decrease: {initial_sse - final_sse:.6f} "
+              f"({100 * (initial_sse - final_sse) / initial_sse:.2f}%)")
+ 
+    # Full parameter vector with the optimized values written back in
+    optimized_full = np.array(default_values, dtype=float)
+    for idx, param in enumerate(params):
+        optimized_full[param] = result.x[idx]
+ 
+    return {
+        "conditions": conditions,
+        "optimized_parameters": {
+            param_names[param]: float(result.x[idx])
+            for idx, param in enumerate(params)
+        },
+        "optimized_parameter_vector": {
+            name: float(value) for name, value in zip(param_names, optimized_full)
+        },
+        "initial_sse": initial_sse,
+        "final_sse": final_sse,
+        "sse_decrease": (initial_sse - final_sse) if initial_sse else None,
+        "sse_percent_decrease": (
+            100 * (initial_sse - final_sse) / initial_sse if initial_sse else None
+        ),
+        "final_errors_by_condition": history[-1]["errors_by_condition"] if history else {},
+        "num_function_evaluations": len(history),
+        "success": bool(result.success),
+        "message": str(result.message),
+        "history": history,
+    }
 
-    result.x, result.fun
-
-    print(result.x)
-    print(result.fun)
-    print(result.message)
-
+if __name__ == "__main__":
+    args = parse_args()
+ 
+    # Read parameter definitions
+    df = pd.read_excel(PARAMETER_FILE)
+    numpar = len(df)
+    param_names = df["Parameter Name"].tolist()
+ 
+    # Parameters to optimize: every row with a blank "Vary?" column
+    params = extract_varying_param_indices(df)
+ 
+    # Read bounds and default (mean) values
+    bounds = df[["Lower", "Upper"]].to_numpy()
+    default_values = np.reshape(df[["Mean"]].to_numpy(), numpar)
+ 
+    print("Selected parameters:")
+    for i in params:
+        print(f"  {i + 1}: {param_names[i]} "
+              f"(default {default_values[i]}, bounds {tuple(bounds[i])})")
+ 
+    # Prepare output directories / logs
+    SENSITIVITY_DIR.mkdir(parents=True, exist_ok=True)
+    open(SENSITIVITY_DIR / "stdout.txt", 'w').close()
+    open(SENSITIVITY_DIR / "stderr.txt", 'w').close()
+ 
+    if args.snapshots:
+        (OUTPUT_DIR / "snapshots").mkdir(parents=True, exist_ok=True)
+        (OUTPUT_DIR / "snapshots" / "biomarker_csvs").mkdir(parents=True, exist_ok=True)
+        open(OUTPUT_DIR / "snapshots" / "day_snapshots.csv", 'w').close()
+ 
+    # Generate experimental values
+    experimental_df = extract_small_scaffold_experimental(Path("experimental_config.csv"))
+    experimental_df_indexed = experimental_df.set_index(['group', 'time_hour'])
+ 
+    print("Experimental data:")
+    print(experimental_df_indexed)
+ 
+    # # # Run optimization # # #
+    # joint:    one fit, objective = error summed over every condition
+    # separate: an independent fit (and parameter set) per condition
+    if args.mode == "joint":
+        condition_groups = [list(args.conditions)]
+    else:
+        condition_groups = [[condition] for condition in args.conditions]
+ 
+    runs = [
+        run_optimization(
+            group, params, bounds, default_values,
+            param_names, experimental_df_indexed, args,
+        )
+        for group in condition_groups
+    ]
+ 
+    results = {
+        "mode": args.mode,
+        "conditions": list(args.conditions),
+        "settings": {
+            "iters_per_evaluation": args.iters,
+            "maxiter": args.maxiter,
+            "tol": args.tol,
+            "numticks": NUMTICKS,
+            "fitted_targets": FITTED_METRIC_KEYS,
+            "tracked_metrics": [metric_label(m) for m in OUTPUT_METRICS],
+        },
+        "runs": runs,
+    }
+ 
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with open(args.out, "w") as f:
+        json.dump(results, f, indent=2)
+ 
+    print(f"\n{'=' * 70}")
+    print(f"Mode: {args.mode}")
+    for run in runs:
+        print(f"  {'+'.join(run['conditions'])}: final SSE {run['final_sse']:.6f}"
+              + (f" ({run['sse_percent_decrease']:.2f}% decrease)"
+                 if run["sse_percent_decrease"] is not None else ""))
+    if args.mode == "separate" and len(runs) > 1:
+        print(f"  sum of per-condition SSEs: {sum(r['final_sse'] for r in runs):.6f}")
+    print(f"Wrote {args.out}")

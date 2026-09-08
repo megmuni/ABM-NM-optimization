@@ -387,7 +387,7 @@ def run_ABM(config_file: Path, numticks: int = METRICS_NUMTICKS) -> None:
             "./bin/testRun",
             "--numticks",
             str(numticks), 
-            "--inputfile",
+            "--config",
             str(config_file),
             "--wxw",
             "0.5",

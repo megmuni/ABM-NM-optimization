@@ -38,7 +38,7 @@
 # mismatch either skips tasks silently or fails them with "no task N".
 set -uo pipefail
 
-module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || { echo "Module load failed"; exit 1; }
+module load StdEnv/2023 gcc/12.3 cuda/12.2 python/3.11 || { echo "Module load failed"; exit 1; }
 
 TASK=${SLURM_ARRAY_TASK_ID:-0}
 SUBMIT_DIR=${SLURM_SUBMIT_DIR:-$PWD}

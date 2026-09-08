@@ -28,10 +28,24 @@ echo
 read -r -d '' INNER <<'INNER_EOF'
 set -uo pipefail
 
-module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || exit 1
+module load StdEnv/2023 gcc/12.3 cuda/12.2 python/3.11 || exit 1
 
 if ! nvidia-smi > /dev/null 2>&1; then
-	echo "ERROR: no GPU in this allocation. The ABM needs a CUDA device."
+	echo "ERROR: no GPU visible."
+	echo "  SLURM_JOB_GPUS      = ${SLURM_JOB_GPUS:-<unset>}"
+	echo "  SLURM_GPUS_ON_NODE  = ${SLURM_GPUS_ON_NODE:-<unset>}"
+	echo "  CUDA_VISIBLE_DEVICES= ${CUDA_VISIBLE_DEVICES:-<unset>}"
+	echo "  hostname            = $(hostname)"
+	echo
+	echo "If the SLURM_* variables above are unset, the allocation had no GPU"
+	echo "attached. Common causes:"
+	echo "  - the GPU type in the request doesn't exist on this cluster;"
+	echo "    check with 'sinfo -o \"%%N %%G\" | sort -u'"
+	echo "  - the account isn't GPU-eligible; GPU allocations are often a"
+	echo "    separate account (e.g. def-nicoleli-gpu or an rrg-* RAC)."
+	echo "    Check with 'sshare -U' or 'sacctmgr show assoc user=$USER'"
+	echo "  - the flag syntax: some clusters want --gres=gpu:h100:1 rather"
+	echo "    than --gpus=h100:1"
 	exit 1
 fi
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
@@ -65,7 +79,7 @@ python -c "import numpy, pandas, scipy, openpyxl" || {
 	echo "  pip install --no-index --user -r requirements.txt"
 	exit 1
 }
- 
+
 echo
 echo "Running verification..."
 python -u ABM_verify.py all $VERIFY_ARGS

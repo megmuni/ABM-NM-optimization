@@ -1,11 +1,36 @@
 #!/bin/bash
-#SBATCH --account=def-nicoleli
-#SBATCH --time=09:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --gpus=h100:2
-#SBATCH --mem=120000M
+#SBATCH --account=rrg-nicoleli
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --gpus=h100:1
+#SBATCH --mem=64000M
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --mail-type=ALL
+
+# =========================================
+# ABM Nelder-Mead optimization job.
+#
+# Usage:
+#   export EMAIL="you@mail.com"
+#   sbatch --mail-user $EMAIL ABM_optimize_job.sh [args passed to ABM_optimize.py]
+#
+# Examples:
+#   sbatch --mail-user $EMAIL ABM_optimize_job.sh
+#   sbatch --mail-user $EMAIL ABM_optimize_job.sh --mode separate
+#   sbatch --mail-user $EMAIL ABM_optimize_job.sh --mode joint --iters 3 --maxiter 50
+#   sbatch --mail-user $EMAIL ABM_optimize_job.sh --mode separate --conditions low
+#
+# Every argument is forwarded verbatim to ABM_optimize.py, so
+# `python ABM_optimize.py --help` is the authoritative list. This script
+# only *reads* --mode and --conditions
+#
+# NOTE ON WALLTIME: the objective now reads day 21, so each ABM execution
+# runs 1009 ticks rather than the 289 the old script assumed -- roughly
+# 3.5x longer per run. Total executions are
+# (NM evaluations) x (conditions) x (--iters), and --mode separate runs a
+# full optimization per condition. Time one ABM execution with
+# run_ABM_job.sh and multiply before trusting the 23h above.
+# =========================================
 
 # =========================================
 # SETUP (virtualenv, modules, etc.)
@@ -17,8 +42,8 @@ module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || { echo "Module load f
 # to override the default SLURM_TMPDIR
 # for testing purposes.
 
-# This will create the virtual environment in the user's 
-# scratch directory. You can also replace it 
+# This will create the virtual environment in the user's
+# scratch directory. You can also replace it
 # with a different location.
 
 # If you do this, make sure ABM_optimize.py
@@ -44,38 +69,38 @@ module load StdEnv/2020 gcc/9.3.0 cuda/11.0 python/3.10 || { echo "Module load f
 # fi
 # =========================================
 
-# PACKAGE DIRECTORY AT FAILURE OR SUCCESS
+# ARGUMENTS
+#
+# All args are forwarded to ABM_optimize.py. --mode and --conditions
+# are only used so the tarball name says what the job was for
+# =========================================
 
 original_args=("$@")
+mode=""
+conditions=()
 
-# extract arguments for naming output file
-for arg in "$@"; do
-    case $arg in
-        --n=*) n="${arg#*=}" ;;
-        --method=*) method="${arg#*=}" ;;
-    esac
-done
-
-
-n=""
-method=""
 while [[ $# -gt 0 ]]; do
 	case $1 in
-		--n=*)
-			n="${1#*=}"
+		--mode=*)
+			mode="${1#*=}"
 			shift
 			;;
-		--n)
-			n="$2"
+		--mode)
+			mode="$2"
 			shift 2
 			;;
-		--method=*)
-			method="${1#*=}"
+		--conditions=*)
+			conditions+=("${1#*=}")
 			shift
 			;;
-		--method)
-			method="$2"
-			shift 2
+		--conditions)
+			shift
+			# --conditions takes one or more values (nargs='+'), so consume
+			# every following token until the next flag
+			while [[ $# -gt 0 && "$1" != --* ]]; do
+				conditions+=("$1")
+				shift
+			done
 			;;
 		*)
 			shift
@@ -83,18 +108,49 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-n=${n:-5}
-method=${method:-"Random Forest"}
-method_safe=$(echo "$method" | tr ' ' '_') # replace spaces with underscores for safe filename
+# Defaults here must mirror ABM_optimize.py's argparse defaults
+mode=${mode:-joint}
+if [ ${#conditions[@]} -eq 0 ]; then
+	conditions=(high low)
+fi
+conditions_safe=$(IFS=-; echo "${conditions[*]}")
 
-echo "Method: $method_safe"
-echo "Parameters: $n"
+echo "Mode: $mode"
+echo "Conditions: ${conditions[*]}"
 
 current_date=$(date +"%Y-%m-%d_%H-%M-%S")
-tarball_name="../param_opt_${current_date}_n${n}_${method_safe}.tar.gz"
+tarball_name="../param_opt_${current_date}_${mode}_${conditions_safe}.tar.gz"
 
 # trap to package directory on any exit (success or failure)
 trap 'echo "Packaging directory (trap)..."; tar -czf "$tarball_name" . && echo "Packaged directory into: $tarball_name"' EXIT
+
+# =========================================
+# Some checks to make the job fail immediately with a clear message:
+echo "Checking required input files..."
+for required in \
+	"ABM.py" \
+	"ABM_optimize.py" \
+	"simulation_config.template.json" \
+	"parameters.xlsx" \
+	"experimental_config.csv" \
+	"bin/testRun"
+do
+  if [ ! -e "$required" ]; then
+		echo "MISSING REQUIRED INPUT: $required"
+		exit 1
+	fi
+done
+
+if [ ! -x "bin/testRun" ]; then
+	echo "bin/testRun is not executable; run 'chmod +x bin/testRun'"
+	exit 1
+fi
+
+# Directories the Python scripts write into. ABM.run_ABM creates output/
+# itself, but output/SensitivityAnalysis (the per-execution ABM
+# stdout/stderr logs), configFiles/ (the generated sample config) and
+# this script's own output/output.txt must exist up front.
+mkdir -p output/SensitivityAnalysis configFiles || { echo "Failed to create directories"; exit 1; }
 
 echo "SLURM_TMPDIR: $SLURM_TMPDIR"
 df -h $SLURM_TMPDIR || { echo "Failed to check disk space"; exit 1; }
@@ -127,14 +183,31 @@ pip list || { echo "pip is not working correctly"; exit 1; }
 
 echo "Installing dependencies..."
 
-pip install --upgrade pip || { echo "Failed to upgrade pip"; exit 1; } 
-#pip install --no-index numpy scipy pandas xlrd openpyxl || { echo "Failed to install Python dependencies"; exit 1; }
+pip install --upgrade pip || { echo "Failed to upgrade pip"; exit 1; }
 pip install --no-index -r requirements.txt || { echo "Failed to install Python dependencies"; exit 1; }
-pip freeze > requirements.txt
+
+# Record what actually got installed
+pip freeze > output/installed_packages.txt
 
 echo "Installed packages:"
-cat requirements.txt
+cat output/installed_packages.txt
 
+# Confirm the imports the optimizer needs are actually usable, and that
+# the parameter spreadsheet and config template agree with each other,
+# before committing the walltime to a long run.
+python -c "
+import ABM
+print('Fitted targets:', ABM.FITTED_METRIC_KEYS)
+print('Tracked metrics:', ABM.OUTPUT_METRIC_KEYS)
+print('Ticks per ABM execution:', ABM.METRICS_NUMTICKS)
+paths = ABM.get_template_parameter_paths(ABM.CONFIG_TEMPLATE)
+import pandas as pd
+df = pd.read_excel(ABM.PARAMETER_FILE)
+assert df['Parameter Name'].tolist() == paths, \
+    'parameters.xlsx and simulation_config.template.json are out of sync'
+print('Parameters in sync:', len(paths))
+" || { echo "Preflight import/parameter check failed"; exit 1; }
+# =========================================
 
 # ==========================================
 # RUN PYTHON SCRIPT
@@ -144,7 +217,9 @@ export OMP_NUM_THREADS=32
 export OMP_NESTED=TRUE
 
 # check the CUDA device
-nvidia-smi || { echo "Failed to check CUDA device"; exit 1; }
+# check the CUDA device (informational -- the optimizer itself is
+# scipy/pandas on CPU, so don't kill the job if this fails)
+nvidia-smi || echo "WARNING: nvidia-smi failed; continuing (check whether bin/testRun needs a GPU)"
 
 echo "Running Python script..."
 echo "Arguments: ${original_args[@]}"
@@ -160,4 +235,3 @@ python ABM_optimize.py "${original_args[@]}" > output/output.txt 2>&1 || { echo 
 
 echo "Script finished successfully."
 exit 0
-

@@ -2,10 +2,10 @@
 # ABM_samples_job.sh
 #
 #SBATCH --account=rrg-nicoleli
-#SBATCH --time=0-06:00:00
+#SBATCH --time=0-03:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --gpus=h100_1g.10gb:1
-#SBATCH --mem=16000M
+#SBATCH --mem=8000M
 #SBATCH --output=logs/gensamples_%A_%a.out
 #SBATCH --error=logs/gensamples_%A_%a.err
 #SBATCH --mail-user=${EMAIL}
@@ -14,7 +14,7 @@
 #
 # Sample generation for ABM optimization, structured as a SLURM job array.
 # One array task per (sample, condition) pair
-# the workflow is 3 steps:
+# The workflow is 3 steps:
 #   1. Write the configs (from login node):
 #        python ABM_generate_samples.py write-configs --n-samples 10
 #      This draws the parameter sets, writes one JSON config per task
@@ -25,8 +25,7 @@
 #        NTASKS=$(python ABM_generate_samples.py count --n-samples 10)
 #        export EMAIL="you@mail.com"
 #        sbatch --array=0-$((NTASKS-1))%20 --mail-user $EMAIL ABM_generate_samples_job.sh
-#      The %20 caps concurrency at 20 running tasks. Raise it to fan out
-#      harder; the cluster's own per-user limit still applies on top.
+#      The %20 caps concurrency at 20 running tasks
 #
 #   3. Collect once the array finishes:
 #        python ABM_generate_samples.py collect

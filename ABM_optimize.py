@@ -241,63 +241,68 @@ def save_snapshot(nfeval: int, config: str):
         writer.writerow(snapshot_data_day_7_with_nfeval)
         writer.writerow(snapshot_data_day_21_with_nfeval)
 
-def run_with_scaffold(condition: str, Y: np.ndarray, experimental_df: pd.DataFrame, config_index: int, param_values: list, 
-                      param_names: list, num_iters: int = 3):
+def run_with_scaffold(condition: str, Y: np.ndarray, experimental_df: pd.DataFrame, config_index: int, param_values: list, param_names: list, num_iters: int = 3):
     """
-    Run the ABM simulation with the specified scaffold configuration 
-    # ("high" or "low")
+    Run the ABM simulation for one condition ("high" or "low"), `num_iters`
+    times, and record the mean squared error against experimental data
+    into Y for this condition
+
     """
-    # Collect errors for each run
-    # modify this list based on what experimental data you have available,
-    # at which timepoints
     cellviability_day7_errors = []
     percentdiff_day7_errors = []
     cellviability_day21_errors = []
     aggrecan_day21_errors = []
     percentdiff_day21_errors = []
-    
+ 
     sample_config_path = Path("configFiles/simulation_config_sample.json")
-
+ 
     for iter in range(num_iters):
-        print(f"Running iteration {iter + 1} for config {config_file}")
+        print(f"Running iteration {iter + 1} for condition {condition}")
+ 
         with open(stdout_file_name, 'a') as stdout_file:
-            with open(stderr_file_name, 'a') as stderr_file:
-                stdout_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                stderr_file.write("\n\n******************************\n*** MODEL EXECUTION #" + str(Nfeval) + " ***\n******************************\n")
-                create_sample_file(param_values, CONFIG_TEMPLATE, sample_config_path,
+            stdout_file.write(f"\n\n******************************\n*** MODEL EXECUTION #{Nfeval} ***\n******************************\n")
+        with open(stderr_file_name, 'a') as stderr_file:
+            stderr_file.write(f"\n\n******************************\n*** MODEL EXECUTION #{Nfeval} ***\n******************************\n")
+ 
+        # merge this iteration's varying parameter values into the single
+        # template AND apply this condition's high/low scaffold switch
+        create_sample_file(param_values, CONFIG_TEMPLATE, sample_config_path,
                             parameter_names=param_names, condition=condition)
-                run_ABM(sample_config_path)
-
-        # After each run, read output and calculate error
-        with open('output/Output_Biomarkers.csv', 'rt') as f:
-            temp = csv.reader(f)
-            temp = list(temp)
-
-            group_name = Path(config_file).stem
-            day7_cellviability = experimental_df.loc[(group_name, 168), 'small_scaffold_cell_viability']
-            day21_cellviability = experimental_df.loc[(group_name, 504), 'small_scaffold_cell_viability']
-            #day7_aggrecan= experimental_df.loc[(group_name, 168), 'small_scaffold_aggrecan_pg']
-            day21_aggrecan = experimental_df.loc[(group_name, 504), 'small_scaffold_aggrecan_ug']
-            day7_percentdiff = experimental_df.loc[(group_name, 168), 'small_scaffold_percent_diff']
-            day21_percentdiff = experimental_df.loc[(group_name, 504), 'small_scaffold_percent_diff']
-
-            print(f"Day 7: aggrecan={temp[TICKS_PER_DAY * 7][7} total cells={temp[TICKS_PER_DAY * 7][8]} cell viability={temp[TICKS_PER_DAY * 7][20]} % diff={temp[TICKS_PER_DAY * 7][21]}")
-            print(f"Day 21: aggrecan={temp[TICKS_PER_DAY * 21][7]} total cells={temp[TICKS_PER_DAY * 21][8]} cell viability={temp[TICKS_PER_DAY * 21][20]} % diff={temp[TICKS_PER_DAY * 21][21]}")
-
-            cellviability_day7_errors.append(error(day7_cellviability, float(temp[TICKS_PER_DAY * 7][20])))
-            percentdiff_day7_errors.append(error(day7_percentdiff, float(temp[TICKS_PER_DAY * 7][21])))
-            
-            aggrecan_day21_errors.append(error(day21_aggrecan, float(temp[TICKS_PER_DAY * 21][7])))
-            cellviability_day21_errors.append(error(day21_cellviability, float(temp[TICKS_PER_DAY * 21][20])))
-            percentdiff_day21_errors.append(error(day21_percentdiff, float(temp[TICKS_PER_DAY * 21][21])))
-
-    # Assign the mean error over all runs
+ 
+        run_ABM(sample_config_path)
+ 
+        # experimental_config.csv "group" column uses the old scaffold
+        # config file names ("config_scaffold_High"/"config_scaffold_Low"),
+        # not the plain condition string; map through CONDITION_TO_GROUP
+        group_name = CONDITION_TO_GROUP[condition]
+        day7_cellviability = experimental_df.loc[(group_name, 168), 'small_scaffold_cell_viability']
+        day21_cellviability = experimental_df.loc[(group_name, 504), 'small_scaffold_cell_viability']
+        day21_aggrecan = experimental_df.loc[(group_name, 504), 'small_scaffold_aggrecan_ug']
+        day7_percentdiff = experimental_df.loc[(group_name, 168), 'small_scaffold_percent_diff']
+        day21_percentdiff = experimental_df.loc[(group_name, 504), 'small_scaffold_percent_diff']
+ 
+        day7 = extract_biomarkers_at_tick('output/Output_Biomarkers.csv', TICKS_PER_DAY * 7)
+        day21 = extract_biomarkers_at_tick('output/Output_Biomarkers.csv', TICKS_PER_DAY * 21)
+ 
+        print(f"Day 7: aggrecan={day7['aggrecan']} total cells={day7['total_cells']} "
+              f"cell viability={day7['cell_viability']} % diff={day7['percent_diff']}")
+        print(f"Day 21: aggrecan={day21['aggrecan']} total cells={day21['total_cells']} "
+              f"cell viability={day21['cell_viability']} % diff={day21['percent_diff']}")
+ 
+        cellviability_day7_errors.append(error(day7_cellviability, day7['cell_viability']))
+        percentdiff_day7_errors.append(error(day7_percentdiff, day7['percent_diff']))
+ 
+        aggrecan_day21_errors.append(error(day21_aggrecan, day21['aggrecan']))
+        cellviability_day21_errors.append(error(day21_cellviability, day21['cell_viability']))
+        percentdiff_day21_errors.append(error(day21_percentdiff, day21['percent_diff']))
+ 
     base = config_index * 5
     Y[base + 0] = np.mean(cellviability_day7_errors)
     Y[base + 1] = np.mean(percentdiff_day7_errors)
     Y[base + 2] = np.mean(aggrecan_day21_errors)
     Y[base + 3] = np.mean(cellviability_day21_errors)
     Y[base + 4] = np.mean(percentdiff_day21_errors)
+
 
 def ABM(x):
 
@@ -357,12 +362,13 @@ if __name__ == "__main__":
     temp_sample = np.reshape(temp_sample_1,numpar)
 
     # Choose specific parameters
-    names_s = list( names[i] for i in params )
+    names_s = list(param_names[i] for i in params)
     print(names_s)
     bounds_s = bounds[np.array(params)]
     print(bounds_s)
     default_s = temp_sample[np.array(params)]
     print(default_s)
+
 
     # Open files
     stdout_file_name = "output/SensitivityAnalysis/stdout.txt"

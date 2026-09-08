@@ -1,26 +1,75 @@
+# Overview
 Contains the Nelder-Mead optimization workflow for VUA Lab ABMs. This is based off of [https://github.com/mintary/abm-opt](https://github.com/mintary/abm-opt), but updated to work with the latest ABM input/output structure (for example, the [IVDBM-ABM](https://github.com/megmuni/IVDBM-ABM)).
 
-## Generating Samples
+## Setup
+1. Update simulation_config.template.json with your specific ABM's config
+1. Update parameters.xlsx so its rows match the tagged template lines in the same order, and set Vary? for the parameters you want optimized
+1. Put experimental_config.csv in place with your measurements
+1. Copy your ABM's bin/ and configFiles/ into this directory, then chmod +x bin/testRun
+1. Edit OUTPUT_METRICS in ABM.py if you're fitting different timepoints or biomarkers
+1. Review the #SBATCH headers in the job scripts (account, walltime, resources)
+1. Install the Python dependencies for your account (see below); one-time step
 
-To generate parameter samples and expected outputs for the ABM model, run:
-
+### Python requirements
+`requirements.txt` has everything you need to install for the optimization scripts to import. Do this once for your account on a given cluster:
 ```bash
-python ABM_generate_samples.py
+module load StdEnv/2020 gcc/9.3.0 python/3.10
+pip install --no-index --user -r requirements.txt
 ```
 
-This will create a file named `generated_samples_with_outputs.csv` containing parameter sets and their corresponding expected outputs for different configurations.
+Then, at the beginning of every session, you only need to import modules:
+```bash
+module load StdEnv/2020 gcc/9.3.0 python/3.10
+```
+# Workflow
+There are 3 parts to the optimization workflow, which have to be run in order.
 
-## Running Verification
+## Part 1: Generate samples 
 
-To verify the ABM model outputs against the known results, run:
+### Step 1 - Generate parameter sets
+
+To generate parameter sets for the ABM, run this from the main optimization directory:
+
+```bash
+python ABM_generate_samples.py write-configs --n-samples 10
+```
+This draws the parameter sets, writes one ready-to-run JSON per (sample, condition) into `configFiles/samples/`, and records the sampled values in `sample_parameters.csv`. Parameters are drawn once per sample and shared across its conditions, so high/low differ only in the scaffold fields (world_init in the JSON).
+
+### Step 2 - Run the ABM to create output
+```bash
+mkdir -p logs   # one-time
+NTASKS=$(python ABM_generate_samples.py count --n-samples 10)
+export EMAIL="you@mail.com"
+sbatch --array=0-$((NTASKS-1))%20 --mail-user $EMAIL ABM_generate_samples_job.sh
+```
+
+Setting `NTASKS` is important for ensuring that the right number of array jobs are submitted by the `sbatch` statement. Make sure you are consistent with what you selected for `--n-samples` in Part 1.
+
+### Step 3 - Collect metrics
+```bash
+python ABM_generate_samples.py collect          # skips missing tasks with a warning
+python ABM_generate_samples.py collect --strict # fail if any task is incomplete
+```
+Joins `sample_parameters.csv` with each task's metrics into `generated_samples_with_outputs.csv`. To re-run individual failed tasks before collecting:
+```bash
+python ABM_generate_samples.py run --task 7
+```
+
+# Part 2: Running Verification
+
+To verify the ABM model outputs against the previously generated results, run:
 
 ```bash
 python ABM_verify.py
 ```
 
-This will execute the ABM for each sample, compare the simulated outputs to the expected values, and write a summary of the results to `verification_results.json`. The JSON file includes per-sample errors and overall summary metrics (such as mean squared error for each output variable).
+This will re-execute the ABM for each sample, compare the simulated outputs to the expected values, and write a summary of the results (per-sample errors and summary metrics) to `verification_results.json`. 
+Useful flags:
+- --reps N: averages several runs per sample before scoring
+- --limit N: for a very quick test
+- --samples / --out / --template: to override paths if necessary
 
-# Parameter optimization
+# Part 3: Parameter optimization
 
 ## Overview
 

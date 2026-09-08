@@ -2,10 +2,10 @@
 Contains the Nelder-Mead optimization workflow for VUA Lab ABMs. This is based off of [https://github.com/mintary/abm-opt](https://github.com/mintary/abm-opt), but updated to work with the latest ABM input/output structure (for example, the [IVDBM-ABM](https://github.com/megmuni/IVDBM-ABM)).
 
 ## Setup
-1. Update simulation_config.template.json with your specific ABM's config
-1. Update parameters.xlsx so its rows match the tagged template lines in the same order, and set Vary? for the parameters you want optimized
-1. Put experimental_config.csv in place with your measurements
-1. Copy your ABM's bin/ and configFiles/ into this directory, then chmod +x bin/testRun
+1. Update `simulation_config.template.json` with your specific ABM's config
+1. Update `parameters.xlsx` so its rows match the tagged template lines in the same order, and set `Vary?` for the parameters you want optimized
+1. Put `experimental_config.csv` in place with your measurements
+1. Copy your ABM's `bin/` and `configFiles/` into this directory, then chmod +x bin/testRun
 1. Edit OUTPUT_METRICS in ABM.py if you're fitting different timepoints or biomarkers
 1. Review the #SBATCH headers in the job scripts (account, walltime, resources)
 1. Install the Python dependencies for your account (see below); one-time step

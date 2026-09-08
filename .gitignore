@@ -11,9 +11,11 @@ slurm-*
 generated_samples_with_outputs.csv
 
 # need to put your own files in these
-bin/* 
+bin/*
 
 # will be populated by the script
-output/SensitivityAnalysis/*
+output/
+verification_results.json
+optimization_results.json
 
 __pycache__/

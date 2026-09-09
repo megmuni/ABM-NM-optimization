@@ -15,7 +15,7 @@ set -uo pipefail
 
 TIME=${TIME:-0-01:00:00}
 ACCOUNT=${ACCOUNT:-def-nicoleli}
-GPU_FLAG=${GPU_FLAG:-h100_1g.10gb:1}
+GPU_FLAG=${GPU_FLAG:---gpus=h100_1g.10gb:1}
 MEM=${MEM:-8000M}
 
 echo "Requesting an interactive session (${TIME}, ${GPU_FLAG}, ${MEM})..."

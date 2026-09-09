@@ -2,7 +2,7 @@
 # ABM_samples_job.sh
 #
 #SBATCH --account=rrg-nicoleli
-#SBATCH --time=0-03:00:00
+#SBATCH --time=0-01:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --gpus=h100_1g.10gb:1
 #SBATCH --mem=8000M

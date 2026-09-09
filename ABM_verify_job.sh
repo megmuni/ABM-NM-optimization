@@ -15,10 +15,10 @@ set -uo pipefail
 
 TIME=${TIME:-0-01:00:00}
 ACCOUNT=${ACCOUNT:-rrg-nicoleli}
-GPUS=${GPUS:-h100_1g.10gb:1}
+GPU_FLAG=${GPU_FLAG:---gpus:h100_1g.10gb:1}
 MEM=${MEM:-8000M}
 
-echo "Requesting an interactive session (${TIME}, ${GPUS}, ${MEM})..."
+echo "Requesting an interactive session (${TIME}, ${GPU_FLAG}, ${MEM})..."
 echo "This may queue for a few minutes."
 echo
 
@@ -36,6 +36,7 @@ if ! nvidia-smi > /dev/null 2>&1; then
 	echo "  SLURM_GPUS_ON_NODE  = ${SLURM_GPUS_ON_NODE:-<unset>}"
 	echo "  CUDA_VISIBLE_DEVICES= ${CUDA_VISIBLE_DEVICES:-<unset>}"
 	echo "  hostname            = $(hostname)"
+	echo "  SLURM_NODELIST      = ${SLURM_NODELIST:-<unset>}"
 	echo
 	echo "If the SLURM_* variables above are unset, the allocation had no GPU"
 	echo "attached. Common causes:"
@@ -48,7 +49,7 @@ if ! nvidia-smi > /dev/null 2>&1; then
 	echo "    than --gpus=h100:1"
 	exit 1
 fi
-nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 
 # ABM shared libraries (libAgent.so etc.) aren't on the default search path
 if [ -n "${ABM_LIB_DIR:-}" ]; then
@@ -82,12 +83,13 @@ python -c "import numpy, pandas, scipy, openpyxl" || {
 
 echo
 echo "Running verification..."
-python -u ABM_verify.py all $VERIFY_ARGS
+python -u ABM_verify.py $VERIFY_ARGS
 INNER_EOF
 # ---------------------------------------------------------------------
 
 export VERIFY_ARGS="$*"
 
-salloc --account="$ACCOUNT" --time="$TIME" --gpus="$GPUS" \
+# srun (not salloc): the command must execute on the allocated node.
+srun --account="$ACCOUNT" --time="$TIME" $GPU_FLAG \
 	--cpus-per-task=1 --mem="$MEM" \
-	bash -c "$INNER"
+	--pty bash -c "$INNER"

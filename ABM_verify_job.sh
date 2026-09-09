@@ -14,7 +14,7 @@
 set -uo pipefail
 
 TIME=${TIME:-0-01:00:00}
-ACCOUNT=${ACCOUNT:-rrg-nicoleli}
+ACCOUNT=${ACCOUNT:-def-nicoleli}
 GPU_FLAG=${GPU_FLAG:-h100_1g.10gb:1}
 MEM=${MEM:-8000M}
 

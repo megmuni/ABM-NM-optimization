@@ -79,10 +79,10 @@ Useful flags:
 
 ### Setup
 
-1. Update the Sensitivity Analysis.xslx file with your parameters
+1. Double check the `parameters.xslx` file for your parameters
 2. Update the `ABM_optimize.py` file as needed.
    a. sam: vector of parameters you are optimizing
-   b. Your ABM specifications in the subprocess.call
+   b. Your ABM run specifications in the subprocess.call
    c. Y: stores each term of your objective function (i.e. error function), which includes the variables you are interested in and experimental values
    i. Currently, this is a sum of square errors
    ii. Because of the stochasticity of the ABM, currently, each parameter set is executed 3 times and averaged
@@ -108,7 +108,7 @@ export EMAIL="youremail@mail.com"
 2. Submit the script
 
 ```bash
-sbatch --mail-user $EMAIL ABM_optimize_job.sh [optional args]
+sbatch --mail-user $EMAIL ABM_optimize_job.sh [args]
 ```
 
 3. Results will be outputed in `output`. You should also see a tarball archive of the entire directory.

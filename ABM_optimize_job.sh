@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=rrg-nicoleli
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=16
+#SBATCH --time=23:00:00
+#SBATCH --cpus-per-task=8
 #SBATCH --gpus=h100:1
 #SBATCH --mem=64000M
 #SBATCH --mail-user=${EMAIL}
@@ -211,17 +211,56 @@ print('Parameters in sync:', len(paths))
 # RUN PYTHON SCRIPT
 # ==========================================
 
-export OMP_NUM_THREADS=32
+export OMP_NUM_THREADS=1
 export OMP_NESTED=TRUE
 
-# check the CUDA device
-# check the CUDA device (informational -- the optimizer itself is
-# scipy/pandas on CPU, so don't kill the job if this fails)
-nvidia-smi || echo "WARNING: nvidia-smi failed; continuing (check whether bin/testRun needs a GPU)"
+if [ -f output/objective_cache.json ]; then
+	CACHED=$(python -c "import json;print(len(json.load(open('output/objective_cache.json'))))" 2>/dev/null || echo "?")
+	echo "Found an existing objective cache with $CACHED evaluation(s)."
+	echo "This run will replay them and continue from where the last one stopped."
+	echo "Delete output/objective_cache.json to start fresh."
+fi
+
+# The ABM allocates device memory on startup, so a missing GPU means
+# every evaluation fails. Fail here instead.
+if ! nvidia-smi > /dev/null 2>&1; then
+	echo "ERROR: no GPU visible to this job."
+	echo "  SLURM_JOB_GPUS      = ${SLURM_JOB_GPUS:-<unset>}"
+	echo "  SLURM_GPUS_ON_NODE  = ${SLURM_GPUS_ON_NODE:-<unset>}"
+	echo "  hostname            = $(hostname)"
+	echo "Check the --gpus request and that the account has a GPU allocation"
+	echo "on this cluster."
+	exit 1
+fi
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+echo "GPUs on node: ${SLURM_GPUS_ON_NODE:-unknown} (used for --devices)"
 
 echo "Running Python script..."
 echo "Arguments: ${original_args[@]}"
-python ABM_optimize.py "${original_args[@]}" > output/output.txt 2>&1 || { echo "Python script failed"; exit 1; }
+
+# -u keeps stdout unbuffered so output/output.txt stays current and can be
+# tailed while the job runs -- useful given how long these take.
+python -u ABM_optimize.py "${original_args[@]}" > output/output.txt 2>&1
+python_status=$?
+
+if [ $python_status -ne 0 ]; then
+	echo "Python script failed with exit status $python_status. Last 40 lines of output/output.txt:"
+	tail -n 40 output/output.txt
+	echo "Last 20 lines of ABM stderr (output/SensitivityAnalysis/stderr.txt):"
+	tail -n 20 output/SensitivityAnalysis/stderr.txt 2>/dev/null
+	exit 1
+fi
+
+# Echo a summary into the SLURM log so results are visible without
+# unpacking the tarball
+echo "Optimization finished. Tail of output/output.txt:"
+tail -n 25 output/output.txt
+
+if [ -f output/optimization_results.json ]; then
+	echo "Results written to output/optimization_results.json"
+else
+	echo "WARNING: output/optimization_results.json not found."
+fi
 
 # =========================================
 # TESTING ONLY

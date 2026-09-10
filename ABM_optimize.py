@@ -1,8 +1,10 @@
 import argparse
 import csv
+import hashlib
 import json
 import os
 import shutil
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
 
@@ -12,6 +14,7 @@ from scipy.optimize import minimize
 
 from ABM import (
     create_sample_file,
+    prepare_workdir,
     run_ABM,
     extract_output_metrics,
     metric_label,
@@ -43,10 +46,10 @@ CONDITION_TO_GROUP = {
 # an "exp_column" (i.e. there is exp data for that metric that we can fit
 # against).
 TARGETS = FITTED_METRICS
- 
+
 # Simulate far enough to cover the latest day any metric needs
 NUMTICKS = METRICS_NUMTICKS
- 
+
 SENSITIVITY_DIR = OUTPUT_DIR / "SensitivityAnalysis"
 # ==========================
 
@@ -55,7 +58,7 @@ SENSITIVITY_DIR = OUTPUT_DIR / "SensitivityAnalysis"
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run ABM Nelder-Mead optimization.")
- 
+
     parser.add_argument(
         "--mode", choices=["joint", "separate"], default="joint",
         help=(
@@ -81,6 +84,45 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--tol", type=float, default=1e-4,
         help="Nelder-Mead convergence tolerance"
+    )
+    parser.add_argument(
+    "--parallel", type=int, default=None,
+    help=(
+        "How many ABM executions to run concurrently. Within one "
+        "Nelder-Mead evaluation the (condition x --iters) executions are "
+        "independent, so this is where the speedup is; Nelder-Mead itself "
+        "is sequential and cannot be batched. Default: all of them at "
+        "once (conditions x iters). Set 1 for the old serial behaviour."
+        )
+    )
+    parser.add_argument(
+        "--devices", type=int, default=None,
+        help=(
+            "Number of GPUs to spread concurrent executions across, "
+            "round-robin via CUDA_VISIBLE_DEVICES. Default: read from "
+            "SLURM_GPUS_ON_NODE, else 1."
+        )
+    )
+    parser.add_argument(
+        "--cache", type=Path, default=OUTPUT_DIR / "objective_cache.json",
+        help=(
+            "Checkpoint file of evaluated parameter vectors -> errors. Lets a "
+            "timed-out run resume: Nelder-Mead is deterministic given the "
+            "objective values, so replaying with cached results fast-forwards "
+            "to where the previous job stopped."
+        )
+    )
+    parser.add_argument(
+        "--no-cache", action="store_true",
+        help="Ignore and don't write the cache; every evaluation re-runs the ABM."
+    )
+    parser.add_argument(
+        "--workdir-root", type=Path, default=None,
+        help=(
+            "Where per-execution working directories go. Default: "
+            "$SLURM_TMPDIR/abm_opt if set, else ./output/workdirs. Node-local "
+            "storage is much faster than the project filesystem."
+        )
     )
     parser.add_argument(
         "--snapshots", action="store_true",
@@ -123,16 +165,16 @@ def extract_small_scaffold_experimental(file_path: Path) -> pd.DataFrame:
 
     # Calculate the average values for each group and time point
     averages = df.groupby(["group", "time_hour"]).mean().reset_index()
-    
+
     # Cell-related adjustments
     averages["small_scaffold_cell_viability"] = averages["cell_viability_percent"]
     averages["small_scaffold_percent_diff"] = averages["percent_diff"]
-    
+
     # Aggrecan adjustment
     averages["small_scaffold_aggrecan_ug"] = averages["sGAG_total_ug"].apply(
         lambda x: small_scaffold_adjustment_aggrecan(x)
     )
-    
+
     return averages
 
 def error(expected, actual):
@@ -173,7 +215,7 @@ def construct_simplex(bounds: np.ndarray, selected_params: list):
         simplex[i] = bounds[selected_params[i]][1]
         # append the new point to the simplex
         init_simplex.append(simplex)
-    
+
     # in the last row, set all parameters to the maximum
     # and append to the simplex
     simplex = init_simplex[0].copy()
@@ -185,7 +227,7 @@ def construct_simplex(bounds: np.ndarray, selected_params: list):
         Initial simplex:
         {[[float(value) for value in row] for row in init_simplex]}
         """)
-    
+
     return init_simplex
 
 def formatted_string(Nfeval, x, Y) -> str:
@@ -215,10 +257,10 @@ def extract_varying_param_indices(df: pd.DataFrame) -> list:
     """
     vary_mask = df["Vary?"].apply(lambda v: not (pd.notna(v) and str(v).strip() != ""))
     varying_rows = df[vary_mask]
- 
+
     if varying_rows.empty:
         raise ValueError('No parameters found with a blank "Vary?" column -- nothing to optimize.')
- 
+
     param_idxs = [int(p) - 1 for p in varying_rows["Parameter Number"].tolist()]
 
     if any(i < 0 or i >= len(df) for i in param_idxs):
@@ -258,10 +300,10 @@ def save_snapshot(nfeval: int, condition: str):
         snapshot["nfeval"] = nfeval
         snapshot["condition"] = condition
         rows.append(snapshot)
- 
+
     if not rows:
         return
- 
+
     fieldnames = list(rows[0].keys())
     snapshot_path = OUTPUT_DIR / "snapshots" / "day_snapshots.csv"
     with open(snapshot_path, 'a', newline='') as snapshots_file:
@@ -270,62 +312,169 @@ def save_snapshot(nfeval: int, condition: str):
             writer.writeheader()
         writer.writerows(rows)
 
-def run_with_scaffold(
-    condition: str,
+def _execute_one(job: dict) -> dict:
+    """
+    One ABM execution: write the config, run it, extract the metrics.
+ 
+    Module-level and self-contained so it can be dispatched to a worker
+    process. Each job gets its own working directory, so concurrent
+    executions never share ./output/Output_Biomarkers.csv or a config file.
+    """
+    workdir = prepare_workdir(Path(job["workdir"]))
+    config_path = workdir / "configFiles" / "simulation_config.json"
+ 
+    create_sample_file(
+        job["param_values"], Path(job["template"]), config_path,
+        parameter_names=job["param_names"], condition=job["condition"],
+    )
+    biomarkers = run_ABM(config_path, numticks=NUMTICKS,
+                         workdir=workdir, device=job["device"])
+ 
+    return {
+        "condition": job["condition"],
+        "iteration": job["iteration"],
+        "metrics": extract_output_metrics(biomarkers),
+        "biomarkers": str(biomarkers),
+    }
+
+def run_conditions(
+    conditions: list[str],
     experimental_df: pd.DataFrame,
     param_values: list,
     param_names: list,
     nfeval: int,
-    num_iters: int = 3,
-) -> dict[str, float]:
+    args: argparse.Namespace,
+) -> dict[str, dict[str, float]]:
     """
-    Run the ABM with the specified scaffold condition ("high" or "low")
-    num_iters times, and return the mean squared error per fitted target,
-    keyed by the target's label.
+    Evaluate every condition for one parameter vector, running the
+    (condition x --iters) ABM executions concurrently, and return the mean
+    squared error per fitted target, per condition.
  
-    Every metric in OUTPUT_METRICS is read and printed each run, but only
-    those with an "exp_column" (i.e. TARGETS) produce error terms
+    This is the only place parallelism helps: those executions are
+    independent of each other, whereas each Nelder-Mead iteration needs
+    the previous one's result.
     """
-    group_name = CONDITION_TO_GROUP[condition]
-    errors_per_target: dict[str, list[float]] = {
-        metric_label(t): [] for t in TARGETS
-    }
+    jobs = []
+    for condition in conditions:
+        for iteration in range(args.iters):
+            jobs.append({
+                "condition": condition,
+                "iteration": iteration,
+                "param_values": param_values,
+                "param_names": param_names,
+                "template": str(CONFIG_TEMPLATE.resolve()),
+                "workdir": str(
+                    args.workdir_root / f"eval{nfeval}_{condition}_{iteration}"
+                ),
+                "device": None,
+            })
  
-    for iteration in range(num_iters):
-        print(f"Running iteration {iteration + 1}/{num_iters} for condition '{condition}'")
+    # Spread executions across the available GPUs round-robin, so they
+    # don't all contend for device 0
+    for i, job in enumerate(jobs):
+        job["device"] = i % args.devices if args.devices > 1 else None
  
-        with open(SENSITIVITY_DIR / "stdout.txt", 'a') as stdout_file, \
-             open(SENSITIVITY_DIR / "stderr.txt", 'a') as stderr_file:
-            banner = (
-                "\n\n******************************\n"
-                f"*** MODEL EXECUTION #{nfeval} ({condition}) ***\n"
-                "******************************\n"
-            )
-            stdout_file.write(banner)
-            stderr_file.write(banner)
+    workers = min(args.parallel, len(jobs))
+    print(f"  Evaluation {nfeval}: {len(jobs)} ABM execution(s) "
+          f"({len(conditions)} condition(s) x {args.iters} iter(s)), "
+          f"{workers} at a time across {args.devices} GPU(s)")
  
-        create_sample_file(
-            param_values, CONFIG_TEMPLATE, SAMPLE_CONFIG_PATH,
-            parameter_names=param_names, condition=condition,
-        )
-        run_ABM(SAMPLE_CONFIG_PATH, numticks=NUMTICKS)
+    results = []
+    if workers <= 1:
+        for job in jobs:
+            results.append(_execute_one(job))
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_execute_one, job): job for job in jobs}
+            for future in as_completed(futures):
+                job = futures[future]
+                try:
+                    results.append(future.result())
+                except Exception as exc:
+                    # One failed execution invalidates this evaluation:
+                    # averaging over the survivors would quietly change the
+                    # objective's noise level mid-optimization
+                    raise RuntimeError(
+                        f"ABM execution failed (condition {job['condition']}, "
+                        f"iteration {job['iteration']}, workdir "
+                        f"{job['workdir']}): {exc}"
+                    ) from exc
  
-        # Read every metric in OUTPUT_METRICS in one pass, keyed by label
-        simulated = extract_output_metrics(OUTPUT_BIOMARKERS)
-        print(f"  {condition}: " + ", ".join(
-            f"{label}={value:.4g}" for label, value in simulated.items()
-        ))
+    # Collect errors per condition
+    errors_by_condition: dict[str, dict[str, float]] = {}
+    for condition in conditions:
+        group_name = CONDITION_TO_GROUP[condition]
+        runs = [r for r in results if r["condition"] == condition]
  
-        # Error terms come from the fitted subset only
-        for target in TARGETS:
-            label = metric_label(target)
-            expected = float(
-                experimental_df.loc[(group_name, target["day"] * 24), target["exp_column"]]
-            )
-            errors_per_target[label].append(error(expected, simulated[label]))
+        per_target: dict[str, list[float]] = {metric_label(t): [] for t in TARGETS}
+        for run in runs:
+            simulated = run["metrics"]
+            print(f"    {condition} iter {run['iteration']}: " + ", ".join(
+                f"{label}={value:.4g}" for label, value in simulated.items()
+            ))
+            for target in TARGETS:
+                label = metric_label(target)
+                expected = float(
+                    experimental_df.loc[
+                        (group_name, target["day"] * 24), target["exp_column"]
+                    ]
+                )
+                per_target[label].append(error(expected, simulated[label]))
  
-    # Mean error over all runs
-    return {label: float(np.mean(errs)) for label, errs in errors_per_target.items()}
+        errors_by_condition[condition] = {
+            label: float(np.mean(errs)) for label, errs in per_target.items()
+        }
+ 
+    # Working directories are large (a 1009-row biomarker CSV plus logs per
+    # execution) and there can be thousands of evaluations, so clear them
+    # unless snapshots were asked for
+    if not args.snapshots:
+        for job in jobs:
+            shutil.rmtree(job["workdir"], ignore_errors=True)
+ 
+    return errors_by_condition
+
+def cache_key(param_values: list, conditions: list[str], iters: int) -> str:
+    """
+    Cache identity for one objective evaluation. Includes the conditions
+    and iteration count, since the same parameter vector evaluated over
+    different conditions (or averaged over a different number of runs)
+    is a different objective value.
+ 
+    Values are rounded to 10 significant figures so float formatting
+    round-trips through JSON without missing a hit.
+    """
+    payload = json.dumps({
+        "params": [float(f"{v:.10g}") for v in param_values],
+        "conditions": conditions,
+        "iters": iters,
+    }, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+ 
+ 
+def load_cache(path: Path, enabled: bool) -> dict:
+    if not enabled or not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            cache = json.load(f)
+        print(f"Loaded {len(cache)} cached evaluation(s) from {path}")
+        return cache
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"WARNING: could not read cache {path} ({exc}); starting fresh.")
+        return {}
+ 
+ 
+def save_cache(path: Path, cache: dict) -> None:
+    """
+    Write the cache atomically, so a job killed mid-write (e.g. by a
+    walltime timeout) can't leave a truncated file that breaks the resume.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        json.dump(cache, f)
+    tmp.replace(path)
 
 def make_objective(
     conditions: list[str],
@@ -334,17 +483,24 @@ def make_objective(
     param_names: list[str],
     experimental_df: pd.DataFrame,
     args: argparse.Namespace,
+    cache: dict,
 ) -> Callable[[np.ndarray], float]:
     """
     Build the Nelder-Mead objective function.
  
-    The returned function evaluates the ABM once per condition in
+    The returned function evaluates the ABM for every condition in
     `conditions` and returns the total SSE summed over all of them. Pass a
     single condition for a per-condition fit, or every condition for a
     joint fit -- the maths is the same, only the length of `conditions`
     differs.
+ 
+    Evaluations are cached by parameter vector. Because Nelder-Mead is
+    deterministic given the objective values, a resumed run replays the
+    same sequence of points and gets cache hits until it reaches the point
+    the previous job died on -- so a walltime timeout costs minutes of
+    replay rather than the whole run.
     """
-    state = {"nfeval": 1, "history": []}
+    state = {"nfeval": 1, "history": [], "cache_hits": 0}
  
     def objective(x: np.ndarray) -> float:
         nfeval = state["nfeval"]
@@ -356,26 +512,20 @@ def make_objective(
             sam[param] = x[idx]
         param_values = sam.tolist()
  
-        errors_by_condition: dict[str, dict[str, float]] = {}
+        key = cache_key(param_values, conditions, args.iters)
+        cached = cache.get(key) if not args.no_cache else None
  
-        for condition in conditions:
-            errors_by_condition[condition] = run_with_scaffold(
-                condition,
-                experimental_df,
-                param_values=param_values,
-                param_names=param_names,
-                nfeval=nfeval,
-                num_iters=args.iters,
+        if cached is not None:
+            errors_by_condition = cached["errors_by_condition"]
+            state["cache_hits"] += 1
+            print(f"  Evaluation {nfeval}: cache hit "
+                  f"(total SSE {cached['total_sse']:.6f}) -- skipping "
+                  f"{len(conditions) * args.iters} ABM execution(s)")
+        else:
+            errors_by_condition = run_conditions(
+                conditions, experimental_df, param_values,
+                param_names, nfeval, args,
             )
- 
-            if args.snapshots:
-                save_snapshot(nfeval, condition)
-                if nfeval % SNAPSHOT_INTERVAL == 0:
-                    shutil.copy(
-                        OUTPUT_BIOMARKERS,
-                        OUTPUT_DIR / "snapshots" / "biomarker_csvs" /
-                        f"snapshots_{nfeval}_{condition}.csv",
-                    )
  
         # Flatten to the objective vector Y: one entry per target per
         # condition, in (condition, target) order
@@ -387,16 +537,27 @@ def make_objective(
  
         total = float(np.sum(Y))
  
+        if cached is None and not args.no_cache:
+            cache[key] = {
+                "errors_by_condition": errors_by_condition,
+                "total_sse": total,
+                "x": [float(v) for v in x],
+            }
+            # Written after every evaluation, not at the end: the whole
+            # point is to survive the job being killed
+            save_cache(args.cache, cache)
+ 
         print(formatted_string(nfeval, x, Y))
         print({c: errors_by_condition[c] for c in conditions})
         print(f"  total SSE over {len(conditions)} condition(s) "
-              f"({', '.join(conditions)}): {total:.6f}")
+              f"({', '.join(conditions)}): {total:.6f}", flush=True)
  
         state["history"].append({
             "nfeval": nfeval,
             "x": [float(v) for v in x],
             "errors_by_condition": errors_by_condition,
             "total_sse": total,
+            "from_cache": cached is not None,
         })
         state["nfeval"] = nfeval + 1
  
@@ -404,7 +565,8 @@ def make_objective(
  
     objective.state = state
     return objective
-
+ 
+ 
 def run_optimization(
     conditions: list[str],
     params: list[int],
@@ -413,16 +575,18 @@ def run_optimization(
     param_names: list[str],
     experimental_df: pd.DataFrame,
     args: argparse.Namespace,
+    cache: dict,
 ) -> dict:
     """
     Run one Nelder-Mead optimization fitting `conditions` together, and
-    return a summary dict of the result
+    return a summary dict of the result.
     """
     label = "+".join(conditions)
     print(f"\n{'=' * 70}\nOptimizing conditions: {label}\n{'=' * 70}")
  
     objective = make_objective(
-        conditions, params, default_values, param_names, experimental_df, args
+        conditions, params, default_values, param_names, experimental_df,
+        args, cache,
     )
  
     initial_simplex = construct_simplex(bounds, params)
@@ -444,6 +608,9 @@ def run_optimization(
     )
  
     history = objective.state["history"]
+    cache_hits = objective.state["cache_hits"]
+    if cache_hits:
+        print(f"  ({cache_hits}/{len(history)} evaluations replayed from cache)")
     initial_sse = history[0]["total_sse"] if history else None
     final_sse = float(result.fun)
  
@@ -477,13 +644,35 @@ def run_optimization(
         ),
         "final_errors_by_condition": history[-1]["errors_by_condition"] if history else {},
         "num_function_evaluations": len(history),
+        "evaluations_from_cache": cache_hits,
         "success": bool(result.success),
         "message": str(result.message),
         "history": history,
     }
-
+ 
+ 
 if __name__ == "__main__":
     args = parse_args()
+ 
+    # Resolve the parallelism / storage defaults now, so everything
+    # downstream sees concrete values
+    if args.devices is None:
+        args.devices = int(os.environ.get("SLURM_GPUS_ON_NODE", "1") or 1)
+    if args.parallel is None:
+        args.parallel = len(args.conditions) * args.iters
+    if args.workdir_root is None:
+        tmpdir = os.environ.get("SLURM_TMPDIR")
+        args.workdir_root = (
+            Path(tmpdir) / "abm_opt" if tmpdir else OUTPUT_DIR / "workdirs"
+        )
+    args.workdir_root.mkdir(parents=True, exist_ok=True)
+ 
+    print(f"Parallelism: up to {args.parallel} concurrent ABM execution(s) "
+          f"across {args.devices} GPU(s)")
+    print(f"Working directories: {args.workdir_root}")
+    print(f"Cache: {'disabled' if args.no_cache else args.cache}")
+ 
+    cache = load_cache(args.cache, not args.no_cache)
  
     # Read parameter definitions
     df = pd.read_excel(PARAMETER_FILE)
@@ -530,19 +719,22 @@ if __name__ == "__main__":
     runs = [
         run_optimization(
             group, params, bounds, default_values,
-            param_names, experimental_df_indexed, args,
+            param_names, experimental_df_indexed, args, cache,
         )
         for group in condition_groups
     ]
  
     results = {
         "mode": args.mode,
+        "parallel": args.parallel,
+        "devices": args.devices,
         "conditions": list(args.conditions),
         "settings": {
             "iters_per_evaluation": args.iters,
             "maxiter": args.maxiter,
             "tol": args.tol,
             "numticks": NUMTICKS,
+            "parallel": args.parallel,
             "fitted_targets": FITTED_METRIC_KEYS,
             "tracked_metrics": [metric_label(m) for m in OUTPUT_METRICS],
         },

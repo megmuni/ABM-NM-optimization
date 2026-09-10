@@ -185,8 +185,6 @@ echo "Installing dependencies..."
 
 pip install --upgrade pip || { echo "Failed to upgrade pip"; exit 1; }
 pip install --no-index -r requirements.txt || { echo "Failed to install Python dependencies"; exit 1; }
-
-# Record what actually got installed
 pip freeze > output/installed_packages.txt
 
 echo "Installed packages:"

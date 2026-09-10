@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=rrg-nicoleli
-#SBATCH --time=23:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=h100:1
 #SBATCH --mem=64000M

@@ -76,14 +76,14 @@ OUTPUT_METRICS = [
     {"day": 7, "column": AGGRECAN_COL, "label": "day_7_aggrecan"},
     {"day": 7, "column": TOTAL_CELLS_COL, "label": "day_7_cells"},
 
-    # Day 21 -- fitted against experimental data
-    {"day": 21, "column": AGGRECAN_COL, "label": "day_21_aggrecan",
-     "exp_column": "small_scaffold_aggrecan_ug"},
-    {"day": 21, "column": CELL_VIABILITY_COL, "label": "day_21_cell_viability",
+    # Day 14 -- fitted against experimental data
+
+    {"day": 14, "column": CELL_VIABILITY_COL, "label": "day_21_cell_viability",
      "exp_column": "small_scaffold_cell_viability"},
-    {"day": 21, "column": PERCENT_DIFF_COL, "label": "day_21_percent_diff",
+    {"day": 14, "column": PERCENT_DIFF_COL, "label": "day_21_percent_diff",
      "exp_column": "small_scaffold_percent_diff"},
     # Day 21 -- tracked only
+    {"day": 14, "column": AGGRECAN_COL, "label": "day_14_aggrecan"},
     {"day": 21, "column": TOTAL_CELLS_COL, "label": "day_21_cells"},
 ]
 

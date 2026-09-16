@@ -16,8 +16,8 @@
     "description": "Diffusion, baselines, and tick length.",
     "tick_interval_minutes": 30,
     "channels": {
-      "count": 9,
-      "chemotaxis": 6,
+      "count": 13,
+      "chemotaxis": 12,
       "channel_names": {
         "0": "pTNF",
         "1": "pTGF",
@@ -27,7 +27,11 @@
         "5": "dTGF",
         "6": "dIL1beta",
         "7": "do2",
-        "8": "pcellgrad"
+        "8": "sTNF",
+        "9": "sTGF",
+        "10": "sIL1beta",
+        "11": "so2",
+        "12": "pcellgrad"
       }
     },
     "merge": {
@@ -45,21 +49,27 @@
         "name": "TNF",
         "base_diffusivity_mm2_per_min": 0.00018,
         "concentration_channel": 0,
-        "diffused_channel": 4
+        "diffused_channel": 4,
+        "secretion_channel": 8,
+        "half_life_minutes": 30
       },
       {
         "id": 1,
         "name": "TGF",
         "base_diffusivity_mm2_per_min": 0.000156,
         "concentration_channel": 1,
-        "diffused_channel": 5
+        "diffused_channel": 5,
+        "secretion_channel": 9,
+        "half_life_minutes": 10
       },
       {
         "id": 2,
         "name": "IL1beta",
         "base_diffusivity_mm2_per_min": 0.00018,
         "concentration_channel": 2,
-        "diffused_channel": 6
+        "diffused_channel": 6,
+        "secretion_channel": 10,
+        "half_life_minutes": 150
       },
       {
         "id": 3,
@@ -67,6 +77,7 @@
         "base_diffusivity_mm2_per_min": 0.02172,
         "concentration_channel": 3,
         "diffused_channel": 7,
+        "secretion_channel": 11,
         "diffusivity_model": {
           "type": "logarithmic_stiffness",
           "slope": -0.002,
@@ -121,12 +132,14 @@
       },
       "proliferation": {
         "tgf_threshold": 10, // m3
+        "static_probability": 40, // m4
         "tnf_effect": 0.8, // m5
         "il1beta_effect": 0.001, // m6
         "elasticity_effect": 0.5 // m7
       },
       "differentiation": {
         "asymmetric_probability": 0.7, // m13
+        "static_probability": 20, // m14
         "baseline_probability": 0.5, // m15
         "tgf_effect": 0.001, // m16
         "hours_between_attempts": 48 // m17
@@ -146,6 +159,9 @@
       },
       "aggrecan_synthesis": {
         "baseline_rate": 1 // p7
+      },
+      "differentiation": {
+        "static_probability": 20 // N/A
       }
     },
     "np": {
@@ -169,30 +185,26 @@
     "biomaterial": {
       "elastic_modulus": {
         "description": "Ca-Alg hydrogel elastic modulus regression (initializeCaAlg)",
-        "intercept": 125, // c1
-        "alginate_concentration": 58, // c2
-        "crosslinker_density": 971, // c3
-        "alginate_molecular_weight": 1.037, // c4
-        "alginate_crosslinker_interaction": 756, // c5
-        "alginate_mw_interaction": 0.516, // c6
-        "mw_crosslinker_interaction": 0.165 // c7
+        "intercept": -1.619, // c1
+        "crosslinker_density": 8592, // c2
+        "alginate_molecular_weight": 0.0015 // c3
       },
       "pore_size": {
-        "crosslinker_effect": 1769.8, // c8
-        "baseline": 258.5 // c9
+        "crosslinker_effect": 1769.8, // c4
+        "baseline": 258.5 // c5
       },
       "mass_loss": {
-        "baseline": 0.234, // c10
-        "crosslinker_effect": 7.785, // c11
-        "time_effect": 0.15, // c12
-        "crosslinker_time_interaction": 1.36 // c13
+        "baseline": 0.234, // c6
+        "crosslinker_effect": 7.785, // c7
+        "time_effect": 0.15, // c8
+        "crosslinker_time_interaction": 1.36 // c9
       },
       "swell_ratio": {
-        "baseline": 72.478, // c14
-        "time_effect": 0.131, // c15
-        "alginate_concentration_effect": 22.034, // c16
-        "time_crosslinker_interaction": 3.284, // c17
-        "alginate_crosslinker_interaction": 35.752 // c18
+        "baseline": 72.478, // c10
+        "time_effect": 0.131, // c11
+        "alginate_concentration_effect": 22.034, // c12
+        "time_crosslinker_interaction": 3.284, // c13
+        "alginate_crosslinker_interaction": 35.752 // c14
       }
     }
   }

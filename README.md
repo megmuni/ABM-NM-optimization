@@ -19,7 +19,7 @@ pip install --no-index --user -r requirements.txt
 
 Then, at the beginning of every session, you only need to import modules:
 ```bash
-module load StdEnv/2020 gcc/9.3.0 python/3.10
+module load StdEnv/2023 gcc/12.3 cuda/12.2 python/3.11
 ```
 # Workflow
 There are 3 parts to the optimization workflow, which have to be run in order.

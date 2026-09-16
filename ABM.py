@@ -41,7 +41,7 @@ CONDITION_FIELDS = {
 # ---------------------------------------------------------------------
 
 CONFIG_TEMPLATE = Path("simulation_config.template.json")
-SAMPLE_CONFIG_PATH = Path("configFiles/simulation_config_sample.json")
+SAMPLE_CONFIG_PATH = Path("configFiles/simulation_config.json")
 OUTPUT_DIR = Path("output")
 OUTPUT_BIOMARKERS = OUTPUT_DIR / "Output_Biomarkers.csv"
 PARAMETER_FILE = Path("parameters.xlsx")

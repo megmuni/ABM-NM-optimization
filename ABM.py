@@ -78,13 +78,13 @@ OUTPUT_METRICS = [
 
     # Day 14 -- fitted against experimental data
 
-    {"day": 14, "column": CELL_VIABILITY_COL, "label": "day_21_cell_viability",
+    {"day": 14, "column": CELL_VIABILITY_COL, "label": "day_14_cell_viability",
      "exp_column": "small_scaffold_cell_viability"},
-    {"day": 14, "column": PERCENT_DIFF_COL, "label": "day_21_percent_diff",
+    {"day": 14, "column": PERCENT_DIFF_COL, "label": "day_14_percent_diff",
      "exp_column": "small_scaffold_percent_diff"},
-    # Day 21 -- tracked only
+    # Day 14 -- tracked only
     {"day": 14, "column": AGGRECAN_COL, "label": "day_14_aggrecan"},
-    {"day": 21, "column": TOTAL_CELLS_COL, "label": "day_21_cells"},
+    {"day": 14, "column": TOTAL_CELLS_COL, "label": "day_14_cells"},
 ]
 
 # ---------------------------------------------------------------------
@@ -403,8 +403,8 @@ def run_ABM(config_file: Path, numticks: int = METRICS_NUMTICKS, workdir: Path |
     out_dir = base / OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    stdout_file_name = OUTPUT_DIR / "stdout.txt"
-    stderr_file_name = OUTPUT_DIR / "stderr.txt"
+    stdout_file_name = out_dir / "stdout.txt"
+    stderr_file_name = out_dir / "stderr.txt"
     biomarkers = base / OUTPUT_BIOMARKERS
 
     if not (base / "bin/testRun").exists():

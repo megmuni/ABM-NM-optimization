@@ -240,8 +240,9 @@ echo "Arguments: ${original_args[@]}"
 
 # -u keeps stdout unbuffered so output/output.txt stays current and can be
 # tailed while the job runs -- useful given how long these take.
-python -u ABM_optimize.py "${original_args[@]}" > output/output.txt 2>&1
-python_status=$?
+set -o pipefail
+python -u ABM_optimize.py "${original_args[@]}" 2>&1 | tee output/output.txt
+python_status=${PIPESTATUS[0]}
 
 if [ $python_status -ne 0 ]; then
 	echo "Python script failed with exit status $python_status. Last 40 lines of output/output.txt:"

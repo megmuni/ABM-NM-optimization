@@ -95,8 +95,8 @@ sbatch --mail-user $EMAIL ABM_optimize_job.sh [args]
 | `--mode` | `joint` | `joint` = one fit, objective summed over all conditions; `separate` = independent fit and parameter set per condition |
 | `--conditions` | `high low` | Which scaffold conditions to fit |
 | `--iters` | `3` | ABM runs per condition per function evaluation, averaged (the ABM is stochastic) |
-| `--maxiter` | `50` | Maximum Nelder-Mead **iterations** — not evaluations |
-| `--maxfev` | none | Hard cap on objective evaluations. The reliable way to bound a run's cost |
+| `--maxiter` | `50` | Maximum Nelder-Mead **iterations** (not evaluations) |
+| `--maxfev` | none | Hard cap on objective evaluations |
 | `--max-params` | none | **Testing only.** Optimize just the first N varying parameters |
 | `--numticks` | from `OUTPUT_METRICS` | **Testing only.** Shorten each execution |
 | `--tol` | `1e-4` | Convergence tolerance |

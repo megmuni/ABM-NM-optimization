@@ -75,27 +75,7 @@ Useful flags:
 
 **Goal**: To determine the values of parameters that minimize the error of ABM outputs
 
-**Logistics**: Uses scipy.optimize package from Python (https://docs.scipy.org/doc/scipy/reference/optimize.html)
-
-### Setup
-
-1. Double check the `parameters.xslx` file for your parameters
-2. Update the `ABM_optimize.py` file as needed.
-   a. sam: vector of parameters you are optimizing
-   b. Your ABM run specifications in the subprocess.call
-   c. Y: stores each term of your objective function (i.e. error function), which includes the variables you are interested in and experimental values
-   i. Currently, this is a sum of square errors
-   ii. Because of the stochasticity of the ABM, currently, each parameter set is executed 3 times and averaged
-   d. Output you are interested in tracking after “print”
-   e. numpar: number of parameters in your ABM
-   f. p1, p2, …, pn: parameter numbers of the parameters you are optimizing
-   g. par_s: number of parameters you are optimizing
-   h. init: initial values for optimization to begin at
-   i. minimize: call to scipy.optimize function, where you can specify the optimization technique you wish to use, as well as any input it requires
-3. Edit the submit ABM_optimize_job.sh file as needed
-4. Create a folder with the bin and configFiles folders from your ABM, the Sensitivity Analysis.xlsx file with the parameter information, and the code files ABM_optimize.py and ABM_optimize_job.sh
-   a. Make sure testRun in bin has execution permissions, “chmod +x testRun”
-5. Create a subfolder named output and a subfolder under output named SensitivityAnalysis
+**Logistics**: Uses scipy.optimize package from Python (https://docs.scipy.org/doc/scipy/reference/optimize.html); runs on the cluster using a job script
 
 ### Execution
 
@@ -110,38 +90,56 @@ export EMAIL="youremail@mail.com"
 ```bash
 sbatch --mail-user $EMAIL ABM_optimize_job.sh [args]
 ```
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--mode` | `joint` | `joint` = one fit, objective summed over all conditions; `separate` = independent fit and parameter set per condition |
+| `--conditions` | `high low` | Which scaffold conditions to fit |
+| `--iters` | `3` | ABM runs per condition per function evaluation, averaged (the ABM is stochastic) |
+| `--maxiter` | `50` | Maximum Nelder-Mead **iterations** — not evaluations |
+| `--maxfev` | none | Hard cap on objective evaluations. The reliable way to bound a run's cost |
+| `--max-params` | none | **Testing only.** Optimize just the first N varying parameters |
+| `--numticks` | from `OUTPUT_METRICS` | **Testing only.** Shorten each execution |
+| `--tol` | `1e-4` | Convergence tolerance |
+| `--parallel` | all | Concurrent ABM executions. Within one evaluation the (conditions x iters) executions are independent; `1` for serial. |
+| `--devices` | `$SLURM_GPUS_ON_NODE` | GPUs to spread executions across, round-robin. |
+| `--cache` | `output/objective_cache.json` | Checkpoint of evaluated parameter vectors, enables resuming |
+| `--no-cache` | off | Disable the cache, re-run every evaluation |
+| `--workdir-root` | `$SLURM_TMPDIR/abm_opt` | Where per-execution working directories go |
+| `--snapshots` | off | Save periodic biomarker snapshots |
+| `--out` | `output/optimization_results.json` | Results path |
 
 3. Results will be outputed in `output`. You should also see a tarball archive of the entire directory.
+
+#### Notes
+**Parallelism.** Nelder-Mead is sequential; that is, each iteration needs the
+previous result. However, (conditions x `--iters`) can be parallel and
+now run concurrently by default. Each runs in
+its own working directory under `$SLURM_TMPDIR`, since the ABM resolves
+`./bin/testRun` and its output paths relative to the working directory.
+
+**Resuming after a timeout.** Every completed evaluation is appended to
+`output/objective_cache.json`. Nelder-Mead is deterministic given the
+objective values, so **resubmitting the same command** replays the
+previous run's path from the cache in minutes and continues from where it
+stopped:
+
+```bash
+sbatch --mail-user $EMAIL ABM_optimize_job.sh --mode joint   # timed out
+sbatch --mail-user $EMAIL ABM_optimize_job.sh --mode joint   # picks up where it left off
+```
+
+Other arguments must match, since the cache key includes the conditions and
+`--iters`. Delete
+the cache to start clean. Parameters optimized are every row of `parameters.xlsx` with a blank
+`Vary?` column. Initial
+simplex is built from the parameter bounds (all minimums, then one maximum
+at a time, then all maximums).
 
 ### Analysis
 
 - Output includes all the variables you included for each ABM execution after the “print” statement, which you can use to monitor how they change with optimization
 - Output ends with results of optimization, i.e. optimal parameter values, minimum error, and stopping criteria met
 - We are typically most interested in evaluating how much error decreased (absolute and % decrease in error)
-
-### Changing the number of parameters
-
-You can optionally submit the job with a number of parameters and a method for ranking parameter importance. The method must be present as a column title in `Sensitivity Analysis.xlsx`.
-
-The default method is Random Forest with `n=5` parameters.
-
-To change the number of parameters:
-
-```bash
-sbatch --mail-user $EMAIL ABM_optimize_job.sh --n [NUMBER HERE]
-```
-
-To change the method of selecting parameters (different ranking):
-
-```bash
-sbatch --mail-user $EMAIL ABM_optimize_job.sh --method [METHOD HERE]
-```
-
-You can customize both the number and method at the same time:
-
-```bash
-sbatch --mail-user $EMAIL ABM_optimize_job.sh --n [NUMBER HERE] --method [METHOD HERE]
-```
 
 ## Testing
 

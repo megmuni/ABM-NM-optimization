@@ -141,6 +141,10 @@ def small_scaffold_adjustment_cells(value: float) -> float:
     Adjusts the value for the small scaffold experimental data.
     The adjustment is based on the formula:
     ((0.6)^3 / 1000 / 0.3 ) * value
+
+    Not needed for IVDBM-ABM, as absolute cell counts are not used, just
+    fold change or cell viability
+
     """
     return ((0.3 ** 3) / 1000 / 0.3) * value
 
@@ -154,7 +158,7 @@ def small_scaffold_adjustment_aggrecan(value: float) -> float:
 
 def extract_small_scaffold_experimental(file_path: Path) -> pd.DataFrame:
     """
-    Extracts experimental data from CSV file corresponding to the small scaffold.
+    Extracts experimental data from CSV file corresponding to the scaffold.
     """
     df = pd.read_csv(file_path)
     df.columns = [c.strip() for c in df.columns]

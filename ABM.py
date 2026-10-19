@@ -67,24 +67,30 @@ TICKS_PER_DAY = 48
 # read out of the ABM!
 
 OUTPUT_METRICS = [
-    # Day 7 -- fitted against experimental data
+    # Day 7: fitted against experimental data
     {"day": 7, "column": CELL_VIABILITY_COL, "label": "day_7_cell_viability",
      "exp_column": "small_scaffold_cell_viability"},
     {"day": 7, "column": PERCENT_DIFF_COL, "label": "day_7_percent_diff",
      "exp_column": "small_scaffold_percent_diff"},
-    # Day 7 -- tracked only (no experimental data at this timepoint)
     {"day": 7, "column": AGGRECAN_COL, "label": "day_7_aggrecan"},
+    # Day 7: tracked only (no experimental data at this timepoint)
     {"day": 7, "column": TOTAL_CELLS_COL, "label": "day_7_cells"},
 
-    # Day 14 -- fitted against experimental data
-
+    # Day 14: fitted against experimental data
     {"day": 14, "column": CELL_VIABILITY_COL, "label": "day_14_cell_viability",
      "exp_column": "small_scaffold_cell_viability"},
     {"day": 14, "column": PERCENT_DIFF_COL, "label": "day_14_percent_diff",
      "exp_column": "small_scaffold_percent_diff"},
-    # Day 14 -- tracked only
     {"day": 14, "column": AGGRECAN_COL, "label": "day_14_aggrecan"},
+    # Day 14: tracked only
     {"day": 14, "column": TOTAL_CELLS_COL, "label": "day_14_cells"},
+
+    # Day 21: fitted against experimental data
+    {"day": 21, "column": TOTAL_CELLS_COL, "label": "day_21_fold_change",
+     "relative_to_day": 0,
+     "exp_column": "small_scaffold_fold_change"},
+    # Day 21: tracked only
+    {"day": 21, "column": TOTAL_CELLS_COL, "label": "day_21_cells"},
 ]
 
 # ---------------------------------------------------------------------

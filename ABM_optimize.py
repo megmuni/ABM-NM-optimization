@@ -156,31 +156,88 @@ def small_scaffold_adjustment_aggrecan(value: float) -> float:
     """
     return ((0.5 * 0.4 * 0.3) / 60) * value * 10 ** 6 # value in ug
 
+EXPERIMENTAL_COLUMNS = {
+    "cell_viability_percent": ("small_scaffold_cell_viability", None),
+    "percent_diff": ("small_scaffold_percent_diff", None),
+    "sGAG_total_ug": ("small_scaffold_aggrecan_ug", "aggrecan"),
+    # Fold change in cell number relative to seeding; dimensionless, so no
+    # conversion. Compared against the ABM's Total Cells at the metric's
+    # day divided by Total Cells at its "relative_to_day". Present only at
+    # 504 h (day 21) in experimental_config.csv.
+    "fold_change": ("small_scaffold_fold_change", None),
+}
+
 def extract_small_scaffold_experimental(file_path: Path) -> pd.DataFrame:
     """
-    Extracts experimental data from CSV file corresponding to the scaffold.
+    Extract experimental data from the CSV, averaged per group and
+    timepoint, with each measurement exposed under the small_scaffold_*
+    name that OUTPUT_METRICS refers to.
     """
     df = pd.read_csv(file_path)
     df.columns = [c.strip() for c in df.columns]
 
-    # Calculate average for each config (low, high)
-    df["cell_viability_percent"] = df["cell_viability_percent"].astype(float)
-    df["sGAG_total_ug"] = df["sGAG_total_ug"].astype(float)
-    df["percent_diff"] = df["percent_diff"].astype(float)
+    present = [c for c in EXPERIMENTAL_COLUMNS if c in df.columns]
+    missing = [c for c in EXPERIMENTAL_COLUMNS if c not in df.columns]
+    if missing:
+        print(f"Note: experimental columns not in {file_path}, so any "
+              f"OUTPUT_METRICS target using them will fail: {missing}")
 
-    # Calculate the average values for each group and time point
-    averages = df.groupby(["group", "time_hour"]).mean().reset_index()
+    for col in present:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Cell-related adjustments
-    averages["small_scaffold_cell_viability"] = averages["cell_viability_percent"]
-    averages["small_scaffold_percent_diff"] = averages["percent_diff"]
+    # Average the replicates for each group and timepoint
+    averages = df.groupby(["group", "time_hour"]).mean(numeric_only=True).reset_index()
 
-    # Aggrecan adjustment
-    averages["small_scaffold_aggrecan_ug"] = averages["sGAG_total_ug"].apply(
-        lambda x: small_scaffold_adjustment_aggrecan(x)
-    )
+    for col in present:
+        target, conversion = EXPERIMENTAL_COLUMNS[col]
+        if conversion == "aggrecan":
+            averages[target] = averages[col].apply(small_scaffold_adjustment_aggrecan)
+        elif conversion == "cells":
+            averages[target] = averages[col].apply(small_scaffold_adjustment_cells)
+        else:
+            averages[target] = averages[col]
 
     return averages
+
+def check_targets_against_experimental(
+    experimental_df: pd.DataFrame, conditions: list[str]
+) -> None:
+    """
+    Confirm every fitted target has a value at its day for every condition,
+    before the optimizer starts. Without this a missing measurement shows
+    up as a KeyError or a silent NaN many evaluations in.
+    """
+    problems = []
+    for target in TARGETS:
+        col = target["exp_column"]
+        if col not in experimental_df.columns:
+            problems.append(f"  {metric_label(target)}: no column '{col}' "
+                            f"(see EXPERIMENTAL_COLUMNS)")
+            continue
+        for condition in conditions:
+            key = (CONDITION_TO_GROUP[condition], target["day"] * 24)
+            try:
+                value = experimental_df.loc[key, col]
+            except KeyError:
+                problems.append(f"  {metric_label(target)}: no row for "
+                                f"{CONDITION_TO_GROUP[condition]} at "
+                                f"{target['day'] * 24} h (day {target['day']})")
+                continue
+            if pd.isna(value):
+                problems.append(f"  {metric_label(target)}: '{col}' is blank "
+                                f"for {CONDITION_TO_GROUP[condition]} at "
+                                f"{target['day'] * 24} h")
+
+    if problems:
+        raise SystemExit(
+            "Fitted targets have no experimental data to compare against:\n"
+            + "\n".join(problems)
+            + "\nEither add the measurements to experimental_config.csv, or "
+              "drop 'exp_column' from those OUTPUT_METRICS entries to make "
+              "them tracked-only."
+        )
+    print(f"All {len(TARGETS)} fitted target(s) have experimental values "
+          f"for {len(conditions)} condition(s).")
 
 def error(expected, actual):
     """

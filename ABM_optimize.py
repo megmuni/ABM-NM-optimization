@@ -75,7 +75,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Which scaffold conditions to fit (default: all)"
     )
     parser.add_argument(
-        "--iters", type=int, default=3,
+        "--iters", type=int, default=2,
         help="ABM runs per condition per function evaluation, averaged"
     )
     parser.add_argument(
@@ -83,7 +83,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Maximum Nelder-Mead iterations"
     )
     parser.add_argument(
-        "--tol", type=float, default=1e-4,
+        "--tol", type=float, default=10,
         help="Nelder-Mead convergence tolerance"
     )
     parser.add_argument(

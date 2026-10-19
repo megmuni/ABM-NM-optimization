@@ -443,11 +443,11 @@ def run_ABM(config_file: Path, numticks: int = METRICS_NUMTICKS, workdir: Path |
             "--config",
             str(config_arg),
             "--wxw",
-            "0.6",
+            "0.5",
             "--wyw",
-            "0.6",
+            "0.4",
             "--wzw",
-            "0.6"
+            "0.3"
         ], stdout=stdout_file, stderr=stderr_file, cwd=str(base), env=env)
 
     if status != 0:

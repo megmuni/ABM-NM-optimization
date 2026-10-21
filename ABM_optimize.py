@@ -87,6 +87,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Nelder-Mead convergence tolerance"
     )
     parser.add_argument(
+        "--numticks", type=int, default=None,
+        help=(
+            "TESTING ONLY: override the simulated tick count. The default "
+            "covers the latest day in OUTPUT_METRICS; a smaller value makes "
+            "executions faster but will fail when a target's day isn't "
+            "reached. Use with --max-day-override for a quick plumbing check."
+        )
+    )
+
+    parser.add_argument(
     "--parallel", type=int, default=None,
     help=(
         "How many ABM executions to run concurrently. Within one "

@@ -412,9 +412,6 @@ def run_conditions(
     (condition x --iters) ABM executions concurrently, and return the mean
     squared error per fitted target, per condition.
 
-    This is the only place parallelism helps: those executions are
-    independent of each other, whereas each Nelder-Mead iteration needs
-    the previous one's result.
     """
     jobs = []
     for condition in conditions:
@@ -429,6 +426,7 @@ def run_conditions(
                     args.workdir_root / f"eval{nfeval}_{condition}_{iteration}"
                 ),
                 "device": None,
+                "numticks": args.numticks or NUMTICKS,
             })
 
     # Spread executions across the available GPUs round-robin, so they
@@ -440,6 +438,7 @@ def run_conditions(
     print(f"  Evaluation {nfeval}: {len(jobs)} ABM execution(s) "
           f"({len(conditions)} condition(s) x {args.iters} iter(s)), "
           f"{workers} at a time across {args.devices} GPU(s)")
+    started = time.time()
 
     results = []
     if workers <= 1:
@@ -486,6 +485,11 @@ def run_conditions(
         errors_by_condition[condition] = {
             label: float(np.mean(errs)) for label, errs in per_target.items()
         }
+
+    elapsed = time.time() - started
+    print(f"  Evaluation {nfeval}: {len(jobs)} execution(s) in "
+          f"{elapsed / 60:.1f} min "
+          f"({elapsed / len(jobs) / 60:.1f} min each, serialised)", flush=True)
 
     # Working directories are large (a 1009-row biomarker CSV plus logs per
     # execution) and there can be thousands of evaluations, so clear them

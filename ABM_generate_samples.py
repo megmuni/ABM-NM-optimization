@@ -69,7 +69,7 @@ def sample_truncnorm(mean, sigma, lower, upper, size, rng):
 def generate_param_df() -> pd.DataFrame:
     """
     Generate a DataFrame of parameters with their bounds and default values from spreadsheet.
-    
+
     Columns:
         'Parameter Number': 1-indexed row/param number
         'Parameter Name': colon-joined path matching the config template JSON
@@ -77,7 +77,7 @@ def generate_param_df() -> pd.DataFrame:
         'Lower': lower bound (a) of that param
         'Upper': upper bound (b) of that param
         'SD': std dev, precomputed as (Upper - Lower)/2
-        'Type': distribution type: 1=lognormal, 2=discrete lognormal, 3=normal, 4=uniform 
+        'Type': distribution type: 1=lognormal, 2=discrete lognormal, 3=normal, 4=uniform
         'Vary?': blank=vary this parameter, 'N'=use Mean for every run
     """
     df = pd.read_excel(input_file, sheet_name=sheet_name)
@@ -98,14 +98,14 @@ def mutate_parameters(params: pd.DataFrame) -> pd.DataFrame:
         sd = row["SD"]
         dist_type = row["Type"]
         mean_val = row["Mean"]
-        
+
         vary_raw = row["Vary?"]
         dont_vary = isinstance(vary_raw, str) and vary_raw.strip().upper() == "N"
-        
+
         if dont_vary:
             mutated_params.loc[i, "value"] = mean_val
             continue
-        
+
         if dist_type == 1:
             # lognormal, truncated to [a, b]
             mu = np.log(mean_val)
@@ -131,7 +131,7 @@ def mutate_parameters(params: pd.DataFrame) -> pd.DataFrame:
             mutated_params.loc[i, "value"] = rng.uniform(a, b)
         else:
             raise ValueError(f"Unknown distribution type '{dist_type}' at parameter {i + 1}")
-            
+
     return mutated_params
 
 def task_list(n_samples: int) -> list[tuple[int, str]]:
@@ -147,27 +147,70 @@ def task_name(sample_id: int, condition: str) -> str:
     """Stable filename stem for a task, e.g. 'sample0_high'."""
     return f"sample{sample_id}_{condition}"
 
-def write_configs(n_samples: int) -> pd.DataFrame:
+def clear_previous_sweep(keep_outputs: bool = False) -> None:
+    """
+    Remove the previous sweep's configs and per-task metrics.
+
+    This matters because the filenames are derived from (sample_id,
+    condition), so a new sweep reuses them. Without clearing,
+    `collect` happily pairs the NEW parameter draws in
+    sample_parameters.csv with metrics files left over from the OLD ones
+    -- a samples CSV that looks completely normal and is wrong. Stale
+    configs are a milder version of the same problem.
+
+    Pass keep_outputs=True to leave output/task_metrics/ alone, e.g. when
+    re-running write-configs with an unchanged rng_seed to recover a
+    deleted config.
+    """
+    if SAMPLES_CONFIG_DIR.exists():
+        n = len(list(SAMPLES_CONFIG_DIR.glob("*.json")))
+        if n:
+            print(f"Removing {n} config(s) from a previous sweep in "
+                  f"{SAMPLES_CONFIG_DIR}")
+        shutil.rmtree(SAMPLES_CONFIG_DIR)
+
+    if TASK_METRICS_DIR.exists():
+        n = len(list(TASK_METRICS_DIR.glob("*.json")))
+        if keep_outputs:
+            if n:
+                print(f"KEEPING {n} existing metrics file(s) in "
+                      f"{TASK_METRICS_DIR} (--keep-outputs). These must come "
+                      f"from the same parameter draws, or the collected CSV "
+                      f"will pair new parameters with old outputs.")
+        else:
+            if n:
+                print(f"Removing {n} metrics file(s) from a previous sweep in "
+                      f"{TASK_METRICS_DIR}")
+            shutil.rmtree(TASK_METRICS_DIR)
+
+    if SAMPLES_OUTPUT_CSV.exists():
+        print(f"Removing stale {SAMPLES_OUTPUT_CSV} (it describes the previous "
+              f"sweep; regenerate it with 'collect' after the array finishes)")
+        SAMPLES_OUTPUT_CSV.unlink()
+
+def write_configs(n_samples: int, keep_outputs: bool = False) -> pd.DataFrame:
     """
     Phase 1: draw parameter sets and write one ready-to-run JSON config
     per task, plus sample_parameters.csv recording the drawn values
- 
+
     Each sample's parameters are drawn ONCE and shared by all of its
     conditions, so the high/low runs of a given sample differ only in the
     scaffold fields
     """
+    clear_previous_sweep(keep_outputs=keep_outputs)
+
     param_df = generate_param_df()
     param_names = param_df["Parameter Name"].tolist()
     num_varying = param_df["Vary?"].apply(
         lambda v: not (isinstance(v, str) and v.strip().upper() == "N")).sum()
- 
+
     SAMPLES_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
- 
+
     rows = []
     for i in range(n_samples):
         sample_df = mutate_parameters(param_df)
         param_values = sample_df["value"].tolist()
- 
+
         for condition in CONDITIONS:
             config_path = SAMPLES_CONFIG_DIR / f"{task_name(i, condition)}.json"
             create_sample_file(
@@ -185,14 +228,14 @@ def write_configs(n_samples: int) -> pd.DataFrame:
                 "num_params_varied": num_varying,
                 **{name: param_values[j] for j, name in enumerate(param_names)},
             })
- 
+
     df = pd.DataFrame(rows)
     df.to_csv(SAMPLE_PARAMETERS_CSV, index=False)
- 
+
     expected = task_list(n_samples)
     assert [(r["sample_id"], r["condition"]) for r in rows] == expected, \
         "config ordering does not match task_list()"
- 
+
     print(f"Wrote {len(rows)} config(s) to {SAMPLES_CONFIG_DIR} "
           f"and {SAMPLE_PARAMETERS_CSV}")
     print(f"Task indices 0..{len(rows) - 1}")
@@ -202,7 +245,7 @@ def run_task(task: int) -> dict[str, float]:
     """
     Phase 2: run the ABM for a single task and write its metrics to
     output/task_metrics/<task_name>.json
- 
+
     Reads the config written by write-configs. Intended to be
     the body of one cluster job; run from a private working directory so
     concurrent tasks don't overwrite each other's Output_Biomarkers.csv.
@@ -216,21 +259,21 @@ def run_task(task: int) -> dict[str, float]:
             f"Run 'write-configs' first, or check the array indices."
         )
     row = matching.iloc[0]
- 
+
     config_path = Path(row["config_file"])
     if not config_path.exists():
         raise FileNotFoundError(
             f"Config {config_path} for task {task} is missing; re-run "
             f"'write-configs' (the configs and CSV must come from the same sweep)."
         )
- 
+
     print(f"Task {task}: sample {row['sample_id']}, condition "
           f"{row['condition']}, config {config_path}")
- 
+
     run_ABM(config_path)
     metrics = extract_output_metrics(OUTPUT_BIOMARKERS)
     print(f"Task {task}: {format_output_metrics(metrics)}")
- 
+
     TASK_METRICS_DIR.mkdir(parents=True, exist_ok=True)
     metrics_path = TASK_METRICS_DIR / f"{task_name(int(row['sample_id']), row['condition'])}.json"
     with open(metrics_path, "w") as f:
@@ -240,7 +283,7 @@ def run_task(task: int) -> dict[str, float]:
             "condition": row["condition"],
             "metrics": metrics,
         }, f, indent=2)
- 
+
     print(f"Task {task}: wrote {metrics_path}")
     return metrics
 
@@ -249,26 +292,26 @@ def collect(strict: bool = False) -> pd.DataFrame:
     Phase 3: join sample_parameters.csv with each task's metrics JSON into
     generated_samples_with_outputs.csv, in the same column layout the
     serial version produced
- 
-    Tasks with no metrics file are reported and skipped. 
-    Pass strict=True to fail instead if you intend to verify against 
+
+    Tasks with no metrics file are reported and skipped.
+    Pass strict=True to fail instead if you intend to verify against
     the full set
     """
     params_df = pd.read_csv(SAMPLE_PARAMETERS_CSV)
     metric_keys = [metric_label(m) for m in OUTPUT_METRICS]
- 
+
     rows, missing = [], []
     for _, row in params_df.iterrows():
         stem = task_name(int(row["sample_id"]), row["condition"])
         metrics_path = TASK_METRICS_DIR / f"{stem}.json"
- 
+
         if not metrics_path.exists():
             missing.append((int(row["task"]), stem))
             continue
- 
+
         with open(metrics_path) as f:
             metrics = json.load(f)["metrics"]
- 
+
         absent = [k for k in metric_keys if k not in metrics]
         if absent:
             raise ValueError(
@@ -276,12 +319,12 @@ def collect(strict: bool = False) -> pd.DataFrame:
                 f"probably written before OUTPUT_METRICS changed -- re-run "
                 f"the affected tasks."
             )
- 
+
         # Drop the phase-plumbing columns so the output matches what the
         # serial path produced
         record = row.drop(labels=["task", "config_file"]).to_dict()
         rows.append({**record, **{k: metrics[k] for k in metric_keys}})
- 
+
     if missing:
         print(f"WARNING: {len(missing)} task(s) have no metrics file:")
         for task, stem in missing[:20]:
@@ -290,10 +333,10 @@ def collect(strict: bool = False) -> pd.DataFrame:
             raise SystemExit(
                 f"{len(missing)} task(s) incomplete and --strict was given."
             )
- 
+
     if not rows:
         raise SystemExit("No completed tasks found -- nothing to collect.")
- 
+
     result_df = pd.DataFrame(rows)
     result_df.to_csv(SAMPLES_OUTPUT_CSV, index=False)
     print(f"Collected {len(rows)}/{len(params_df)} task(s) into {SAMPLES_OUTPUT_CSV}")
@@ -314,34 +357,34 @@ def main(argv: list[str] | None = None) -> None:
         description="Generate ABM parameter samples and their expected outputs."
     )
     sub = parser.add_subparsers(dest="phase", required=True)
- 
+
     p_write = sub.add_parser(
         "write-configs",
         help="Draw parameter sets and write one JSON config per task (no ABM runs)."
     )
     p_write.add_argument("--n-samples", type=int, default=10,
                          help="Number of parameter sets (each run once per condition).")
- 
+
     p_run = sub.add_parser("run", help="Run the ABM for a single task.")
     p_run.add_argument("--task", type=int, required=True,
                        help="0-based task index (see write-configs output).")
- 
+
     p_collect = sub.add_parser(
         "collect", help="Join the per-task metrics into the samples CSV."
     )
     p_collect.add_argument("--strict", action="store_true",
                            help="Fail if any task is missing its metrics file.")
- 
+
     p_all = sub.add_parser("all", help="Run every phase serially in this process.")
     p_all.add_argument("--n-samples", type=int, default=10)
- 
+
     p_count = sub.add_parser(
         "count", help="Print the number of tasks for a given sample count and exit."
     )
     p_count.add_argument("--n-samples", type=int, default=10)
- 
+
     args = parser.parse_args(argv)
- 
+
     if args.phase == "write-configs":
         write_configs(args.n_samples)
     elif args.phase == "run":
@@ -352,7 +395,7 @@ def main(argv: list[str] | None = None) -> None:
         generate_samples(args.n_samples)
     elif args.phase == "count":
         print(len(task_list(args.n_samples)))
- 
- 
+
+
 if __name__ == "__main__":
     main()

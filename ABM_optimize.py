@@ -95,7 +95,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "reached. Use with --max-day-override for a quick plumbing check."
         )
     )
-
     parser.add_argument(
     "--parallel", type=int, default=None,
     help=(

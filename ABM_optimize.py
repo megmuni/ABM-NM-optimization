@@ -54,6 +54,11 @@ TARGETS = FITTED_METRICS
 # Simulate far enough to cover the latest day any metric needs
 NUMTICKS = METRICS_NUMTICKS
 
+# Penalty substituted for a non-finite simulated value (see error()).
+# Relative-error terms are normally ~0.01-1, so this is enormous but
+# finite, just so Nelder-Mead is able to compare it
+NONFINITE_PENALTY = 1e6
+
 SENSITIVITY_DIR = OUTPUT_DIR / "SensitivityAnalysis"
 # ==========================
 
@@ -270,6 +275,12 @@ def error(expected, actual):
         amplified; expected == 0 falls back to absolute error, since the
         fraction is undefined there.
     """
+    # this helps handle when the ABM gives a NaN (like when differentiation is NaN
+    # when there are no cells and it tries to divide by 0) so instead of letting NaN
+    # through, this step gives it a large but finite penalty (a number that NM can work with)
+    if not np.isfinite(actual):
+        return NONFINITE_PENALTY
+
     if expected == 0:
         return (expected - actual) ** 2
     return ((expected - actual) / expected) ** 2
@@ -502,6 +513,15 @@ def run_conditions(
             print(f"    {condition} iter {run['iteration']}: " + ", ".join(
                 f"{label}={value:.4g}" for label, value in simulated.items()
             ))
+
+            bad = [k for k, v in simulated.items() if not np.isfinite(v)]
+            if bad:
+                cells = {k: v for k, v in simulated.items() if k.endswith("_cells")}
+                print(f"      WARNING: non-finite output for {bad} "
+                      f"-> penalised at {NONFINITE_PENALTY:g} per term. "
+                      f"Cell counts: {cells}. A nan here usually means the "
+                      f"population died out, leaving the ABM dividing by "
+                      f"zero cells.", flush=True)
             for target in TARGETS:
                 label = metric_label(target)
                 expected = float(
@@ -552,6 +572,7 @@ def spec_fingerprint() -> str:
         ],
         "numticks": NUMTICKS,
         "error_mode": "relative",
+        "nonfinite_penalty": NONFINITE_PENALTY,
         "world_size_mm": list(WORLD_SIZE_MM),
         "gel_volume_mm3": GEL_VOLUME_MM3,
     }

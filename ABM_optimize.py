@@ -30,6 +30,9 @@ from ABM import (
     FITTED_METRICS,
     FITTED_METRIC_KEYS,
     METRICS_NUMTICKS,
+    WORLD_SIZE_MM,
+    WORLD_VOLUME_MM3,
+    GEL_VOLUME_MM3,
 )
 
 # ==========================
@@ -100,7 +103,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument(
-        "--tol", type=float, default=10,
+        "--tol", type=float, default=1e-3,
         help="Nelder-Mead convergence tolerance"
     )
     parser.add_argument(
@@ -152,18 +155,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     return parser.parse_args(argv)
 # ==========================
-
-def small_scaffold_adjustment_cells(value: float) -> float:
-    """
-    Adjusts the value for the small scaffold experimental data.
-    The adjustment is based on the formula:
-    ((0.6)^3 / 1000 / 0.3 ) * value
-
-    ***Not needed for IVDBM-ABM, as absolute cell counts are not used, just
-    fold change or cell viability***
-
-    """
-    return ((0.3 ** 3) / 1000 / 0.3) * value
 
 def small_scaffold_adjustment_aggrecan(value: float) -> float:
     """
@@ -258,9 +249,30 @@ def check_targets_against_experimental(
 
 def error(expected, actual):
     """
-    Calculate SSE between expected and actual values.
+    Squared RELATIVE error between an experimental value and a simulated
+    one -- the squared fractional difference, not the squared absolute
+    difference:
+
+        ((expected - actual) / expected) ** 2
+
+    Relative error makes every target contribute on a comparable scale
+    regardless of its units or magnitude. With absolute squared error the
+    objective is dominated by whichever target has the largest numbers:
+    percentages near 95 produce terms in the thousands, while a fold
+    change near 1 or aggrecan near 0.07 ug produce terms near zero, so
+    those targets end up effectively unfitted. In relative terms a 10%
+    miss contributes 0.01 whichever target it came from.
+
+    Consequences worth knowing:
+      - total SSE now lands near 0.1-1 rather than in the thousands, so
+        --tol must be scaled to match (default lowered to 1e-3).
+      - a target whose expected value is legitimately near zero gets
+        amplified; expected == 0 falls back to absolute error, since the
+        fraction is undefined there.
     """
-    return (expected - actual) ** 2
+    if expected == 0:
+        return (expected - actual) ** 2
+    return ((expected - actual) / expected) ** 2
 
 def construct_simplex(bounds: np.ndarray, selected_params: list):
     """
@@ -539,6 +551,9 @@ def spec_fingerprint() -> str:
             for t in TARGETS
         ],
         "numticks": NUMTICKS,
+        "error_mode": "relative",
+        "world_size_mm": list(WORLD_SIZE_MM),
+        "gel_volume_mm3": GEL_VOLUME_MM3,
     }
     for f in (CONFIG_TEMPLATE, Path("experimental_config.csv")):
         try:
@@ -549,12 +564,14 @@ def spec_fingerprint() -> str:
         json.dumps(payload, sort_keys=True).encode()
     ).hexdigest()[:16]
 
+
 def cache_key(param_values: list, conditions: list[str], iters: int) -> str:
     """
     Cache identity for one objective evaluation. Includes the conditions
     and iteration count, since the same parameter vector evaluated over
-    different conditions (or averaged over a different number of runs)
-    is a different objective value.
+    different conditions (or averaged over a different number of runs) is
+    a different objective value -- and the spec fingerprint, so a changed
+    OUTPUT_METRICS / template / experimental file can't produce a stale hit.
 
     Values are rounded to 10 significant figures so float formatting
     round-trips through JSON without missing a hit.
@@ -563,6 +580,7 @@ def cache_key(param_values: list, conditions: list[str], iters: int) -> str:
         "params": [float(f"{v:.10g}") for v in param_values],
         "conditions": conditions,
         "iters": iters,
+        "spec": spec_fingerprint(),
     }, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
@@ -612,10 +630,9 @@ def make_objective(
     Evaluations are cached by parameter vector. Because Nelder-Mead is
     deterministic given the objective values, a resumed run replays the
     same sequence of points and gets cache hits until it reaches the point
-    the previous job died on -- so a walltime timeout costs minutes of
-    replay rather than the whole run.
+    the previous job died on.
     """
-    state = {"nfeval": 1, "history": [], "cache_hits": 0, "started": time.time()}
+state = {"nfeval": 1, "history": [], "cache_hits": 0, "started": time.time()}
 
     def objective(x: np.ndarray) -> float:
         nfeval = state["nfeval"]
@@ -629,6 +646,18 @@ def make_objective(
 
         key = cache_key(param_values, conditions, args.iters)
         cached = cache.get(key) if not args.no_cache else None
+
+        # A hit from an older cache format (or one written before the
+        # metric spec changed) may not carry every target. Treat that as a
+        # miss rather than failing with a KeyError deep inside scipy.
+        if cached is not None:
+            needed = {metric_label(t) for t in TARGETS}
+            have = cached.get("errors_by_condition", {})
+            if any(needed - set(have.get(c, {})) for c in conditions):
+                print(f"  Evaluation {nfeval}: stale cache entry "
+                      f"(missing {sorted(needed - set(have.get(conditions[0], {})))}) "
+                      f"-- re-running")
+                cached = None
 
         if cached is not None:
             errors_by_condition = cached["errors_by_condition"]
@@ -657,11 +686,15 @@ def make_objective(
                 "errors_by_condition": errors_by_condition,
                 "total_sse": total,
                 "x": [float(v) for v in x],
+                "spec": spec_fingerprint(),
             }
             # Written after every evaluation, not at the end: the whole
             # point is to survive the job being killed
             save_cache(args.cache, cache)
 
+        # Progress line: one per evaluation, timestamped, with best-so-far
+        # and a budget estimate. This is what you watch with
+        # `tail -f slurm-<jobid>.out`.
         best = min([h["total_sse"] for h in state["history"]] + [total])
         elapsed = time.time() - state["started"]
         budget = args.maxfev or (len(params) + 1 + args.maxiter * 2)
@@ -692,7 +725,6 @@ def make_objective(
 
     objective.state = state
     return objective
-
 
 def run_optimization(
     conditions: list[str],
@@ -797,6 +829,10 @@ if __name__ == "__main__":
     print(f"Parallelism: up to {args.parallel} concurrent ABM execution(s) "
           f"across {args.devices} GPU(s)")
     print(f"Working directories: {args.workdir_root}")
+    print(f"World size: {WORLD_SIZE_MM[0]} x {WORLD_SIZE_MM[1]} x "
+          f"{WORLD_SIZE_MM[2]} mm = {WORLD_VOLUME_MM3:.4g} mm^3 "
+          f"({WORLD_VOLUME_MM3 / GEL_VOLUME_MM3:.3g} of the "
+          f"{GEL_VOLUME_MM3:.0f} mm^3 gel)")
     print(f"Cache: {'disabled' if args.no_cache else args.cache}")
 
     cache = load_cache(args.cache, not args.no_cache)
@@ -810,7 +846,6 @@ if __name__ == "__main__":
                   f"and will be ignored (safe to delete {args.cache}).")
 
     print(f"[{time.strftime('%H:%M:%S')}] Reading {PARAMETER_FILE} ...", flush=True)
-
     # Read parameter definitions
     df = pd.read_excel(PARAMETER_FILE)
     numpar = len(df)
@@ -820,7 +855,8 @@ if __name__ == "__main__":
     params = extract_varying_param_indices(df)
 
     # Upfront cost estimate. Nelder-Mead's cost is driven by the number of
-    # parameters, not by --maxiter
+    # parameters, not by --maxiter: the initial simplex alone is one
+    # evaluation per parameter plus one, before iteration 1 begins.
     n_par_opt = len(params)
     simplex_evals = n_par_opt + 1
     est_low = simplex_evals + args.maxiter
@@ -842,8 +878,8 @@ Cost estimate before starting:
   Multiply evaluations by the per-evaluation time printed below to
   estimate walltime. If that exceeds your allocation, the run will time
   out and resume from output/objective_cache.json on resubmission --
-  but consider narrowing the "Vary?" column in parameters.xlsx or
-  --maxfev instead.
+  but consider narrowing the "Vary?" column in parameters.xlsx, or
+  --maxfev, instead.
 """, flush=True)
 
     # Read bounds and default (mean) values
@@ -901,6 +937,7 @@ Cost estimate before starting:
             "maxiter": args.maxiter,
             "tol": args.tol,
             "numticks": NUMTICKS,
+            "error_mode": "squared relative error",
             "parallel": args.parallel,
             "fitted_targets": FITTED_METRIC_KEYS,
             "tracked_metrics": [metric_label(m) for m in OUTPUT_METRICS],

@@ -80,11 +80,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--maxiter", type=int, default=50,
-        help="Maximum Nelder-Mead iterations"
+        help="Maximum Nelder-Mead iterations (not ABM iterations)"
     )
     parser.add_argument(
-        "--tol", type=float, default=10,
-        help="Nelder-Mead convergence tolerance"
+        "--maxfev", type=int, default=None,
+        help=(
+            "Hard cap on objective evaluations -- the reliable way to bound "
+            "a run's cost. The optimizer stops cleanly when it's reached and "
+            "still writes results. Good for fitting a run inside a walltime."
+        )
     )
     parser.add_argument(
         "--numticks", type=int, default=None,
@@ -96,14 +100,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument(
-    "--parallel", type=int, default=None,
-    help=(
-        "How many ABM executions to run concurrently. Within one "
-        "Nelder-Mead evaluation the (condition x --iters) executions are "
-        "independent, so this is where the speedup is; Nelder-Mead itself "
-        "is sequential and cannot be batched. Default: all of them at "
-        "once (conditions x iters). Set 1 for the old serial behaviour."
-        )
+        "--tol", type=float, default=10,
+        help="Nelder-Mead convergence tolerance"
+    )
+    parser.add_argument(
+        "--parallel", type=int, default=None,
+        help=(
+            "How many ABM executions to run concurrently. Within one "
+            "Nelder-Mead evaluation the (condition x --iters) executions are "
+            "independent, so this is where the speedup is; Nelder-Mead itself "
+            "is sequential and cannot be batched. Default: all of them at "
+            "once (conditions x iters). Set 1 for the old serial behaviour."
+            )
     )
     parser.add_argument(
         "--devices", type=int, default=None,
@@ -760,6 +768,14 @@ if __name__ == "__main__":
     print(f"Cache: {'disabled' if args.no_cache else args.cache}")
 
     cache = load_cache(args.cache, not args.no_cache)
+    print(f"Objective spec fingerprint: {spec_fingerprint()} "
+          f"(covers OUTPUT_METRICS, {CONFIG_TEMPLATE}, experimental_config.csv)")
+    if cache:
+        current = spec_fingerprint()
+        stale = sum(1 for v in cache.values() if v.get("spec") not in (None, current))
+        if stale:
+            print(f"  {stale} cached entry/entries are from a different spec "
+                  f"and will be ignored (safe to delete {args.cache}).")
 
     print(f"[{time.strftime('%H:%M:%S')}] Reading {PARAMETER_FILE} ...", flush=True)
 
@@ -770,6 +786,33 @@ if __name__ == "__main__":
 
     # Parameters to optimize: every row with a blank "Vary?" column
     params = extract_varying_param_indices(df)
+
+    # Upfront cost estimate. Nelder-Mead's cost is driven by the number of
+    # parameters, not by --maxiter
+    n_par_opt = len(params)
+    simplex_evals = n_par_opt + 1
+    est_low = simplex_evals + args.maxiter
+    est_high = simplex_evals + args.maxiter * 2
+    n_exec = len(args.conditions) * args.iters
+    if args.mode == "separate":
+        n_exec = args.iters  # one condition at a time
+    print(f"""
+Cost estimate before starting:
+  parameters optimized      : {n_par_opt}
+  initial simplex           : {simplex_evals} evaluations (before iteration 1)
+  --maxiter {args.maxiter:<4}              : ~{est_low}-{est_high} evaluations total"""
+          + (f"\n  --maxfev {args.maxfev:<4}               : capped at {args.maxfev} evaluations"
+             if args.maxfev else "")
+          + f"""
+  ABM executions per eval   : {n_exec} ({args.parallel} run concurrently)
+  runs of the optimizer     : {1 if args.mode == 'joint' else len(args.conditions)} ({args.mode} mode)
+
+  Multiply evaluations by the per-evaluation time printed below to
+  estimate walltime. If that exceeds your allocation, the run will time
+  out and resume from output/objective_cache.json on resubmission --
+  but consider narrowing the "Vary?" column in parameters.xlsx or
+  --maxfev instead.
+""", flush=True)
 
     # Read bounds and default (mean) values
     bounds = df[["Lower", "Upper"]].to_numpy()
@@ -797,6 +840,8 @@ if __name__ == "__main__":
 
     print("Experimental data:")
     print(experimental_df_indexed)
+
+    check_targets_against_experimental(experimental_df_indexed, args.conditions)
 
     # # # Run optimization # # #
     # joint:    one fit, objective = error summed over every condition
@@ -836,7 +881,7 @@ if __name__ == "__main__":
         json.dump(results, f, indent=2)
 
     print(f"\n{'=' * 70}")
-    print(f"Mode: {args.mode}")
+    print(f"[{time.strftime('%H:%M:%S')}] FINISHED. Mode: {args.mode}")
     for run in runs:
         print(f"  {'+'.join(run['conditions'])}: final SSE {run['final_sse']:.6f}"
               + (f" ({run['sse_percent_decrease']:.2f}% decrease)"

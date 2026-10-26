@@ -156,39 +156,36 @@ echo "SLURM_TMPDIR: $SLURM_TMPDIR"
 df -h $SLURM_TMPDIR || { echo "Failed to check disk space"; exit 1; }
 ls -lah $SLURM_TMPDIR
 
-which python
-which virtualenv
-python --version
-virtualenv --version
+# =========================================
+# ENVIRONMENT
+#
+# Prefer the persistent environment from setup_env.sh. Building a
+# throwaway venv in $SLURM_TMPDIR costs several minutes of billed GPU time
+# on every job (and every resubmission), for an environment that is thrown
+# away at the end. Falls back to building one if ~/ABM-env doesn't exist.
+# =========================================
+ABM_ENV="${ABM_ENV:-$HOME/ABM-env}"
 
-echo "Creating virtual environment..."
-virtualenv --no-download "$SLURM_TMPDIR/env"
-if [ $? -ne 0 ]; then
-	echo "Virtualenv creation failed."
-	exit 1
-fi
-
-echo "Virtual environment created successfully."
-
-
-if [ -f "$SLURM_TMPDIR/env/bin/activate" ]; then
-	source "$SLURM_TMPDIR/env/bin/activate"
-	echo "Virtual environment created."
+if [ -f "$ABM_ENV/bin/activate" ]; then
+	echo "Using persistent environment: $ABM_ENV"
+	source "$ABM_ENV/bin/activate" || { echo "Failed to activate $ABM_ENV"; exit 1; }
 else
-	echo "Failed to activate virtual env: $SLURM_TMPDIR/bin/activate not found."
-	exit 1
+	echo "No environment at $ABM_ENV (run 'bash setup_env.sh' to create one"
+	echo "and skip this step on future jobs)."
+	echo "Building a throwaway environment in $SLURM_TMPDIR/env ..."
+	virtualenv --no-download "$SLURM_TMPDIR/env" || { echo "Virtualenv creation failed"; exit 1; }
+	source "$SLURM_TMPDIR/env/bin/activate" || { echo "Failed to activate virtualenv"; exit 1; }
+	# --no-index: compute nodes have no internet, so without it pip spends
+	# minutes timing out against pypi.org before falling back
+	pip install --no-index -r requirements.txt || { echo "Failed to install dependencies"; exit 1; }
 fi
 
-pip list || { echo "pip is not working correctly"; exit 1; }
-
-echo "Installing dependencies..."
-
-pip install --no-index --upgrade pip || { echo "Failed to upgrade pip"; exit 1; }
-pip install --no-index -r requirements.txt || { echo "Failed to install Python dependencies"; exit 1; }
-pip freeze > output/installed_packages.txt
-
-echo "Installed packages:"
-cat output/installed_packages.txt
+python --version
+python -c "import numpy, pandas, scipy, openpyxl" || {
+	echo "Required packages missing. See the README setup step:"
+	echo "  pip install --no-index --user -r requirements.txt"
+	exit 1
+}
 
 # Confirm the imports the optimizer needs are actually usable, and that
 # the parameter spreadsheet and config template agree with each other,
@@ -235,6 +232,18 @@ fi
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 echo "GPUs on node: ${SLURM_GPUS_ON_NODE:-unknown} (used for --devices)"
 
+# =========================================
+# GPU UTILISATION MONITOR
+# =========================================
+GPU_MONITOR_PID=""
+if [ "${NO_GPU_MONITOR:-0}" != "1" ]; then
+	nvidia-smi \
+		--query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total \
+		--format=csv -l 60 > output/gpu_usage.csv 2>/dev/null &
+	GPU_MONITOR_PID=$!
+	echo "GPU monitor started (pid $GPU_MONITOR_PID) -> output/gpu_usage.csv"
+fi
+
 echo "Running Python script..."
 echo "Arguments: ${original_args[@]}"
 
@@ -243,6 +252,20 @@ echo "Arguments: ${original_args[@]}"
 set -o pipefail
 python -u ABM_optimize.py "${original_args[@]}" 2>&1 | tee output/output.txt
 python_status=${PIPESTATUS[0]}
+
+if [ -n "$GPU_MONITOR_PID" ]; then
+	kill "$GPU_MONITOR_PID" 2>/dev/null
+	# Escalate if it ignores SIGTERM, so the monitor can't outlive the job
+	for _ in 1 2 3; do
+		kill -0 "$GPU_MONITOR_PID" 2>/dev/null || break
+		sleep 1
+	done
+	kill -9 "$GPU_MONITOR_PID" 2>/dev/null
+	wait "$GPU_MONITOR_PID" 2>/dev/null
+	if [ -f output/gpu_usage.csv ]; then
+		echo "GPU monitor stopped; $(( $(wc -l < output/gpu_usage.csv) - 1 )) sample(s) in output/gpu_usage.csv"
+	fi
+fi
 
 if [ $python_status -ne 0 ]; then
 	echo "Python script failed with exit status $python_status. Last 40 lines of output/output.txt:"

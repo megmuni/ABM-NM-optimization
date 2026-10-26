@@ -159,8 +159,8 @@ def small_scaffold_adjustment_cells(value: float) -> float:
     The adjustment is based on the formula:
     ((0.6)^3 / 1000 / 0.3 ) * value
 
-    Not needed for IVDBM-ABM, as absolute cell counts are not used, just
-    fold change or cell viability
+    ***Not needed for IVDBM-ABM, as absolute cell counts are not used, just
+    fold change or cell viability***
 
     """
     return ((0.3 ** 3) / 1000 / 0.3) * value
@@ -169,9 +169,9 @@ def small_scaffold_adjustment_aggrecan(value: float) -> float:
     """
     Adjusts the value for the small scaffold experimental data.
     The adjustment is based on the formula:
-    ((0.6)^3 / 300 ) * value * 10^6
+    value * (WORLD_VOLUME_MM3 / GEL_VOLUME_MM3)
     """
-    return ((0.5 * 0.4 * 0.3) / 60) * value * 10 ** 6 # value in ug
+    return value * (WORLD_VOLUME_MM3 / GEL_VOLUME_MM3) # value in ug
 
 EXPERIMENTAL_COLUMNS = {
     "cell_viability_percent": ("small_scaffold_cell_viability", None),

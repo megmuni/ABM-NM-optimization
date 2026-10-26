@@ -61,6 +61,13 @@ PERCENT_DIFF_COL = "Differentiation (%)"
 # 30-minute ticks, so 48 ticks per simulated day
 TICKS_PER_DAY = 48
 
+# simulated world size
+WORLD_SIZE_MM = (0.5, 0.4, 0.3)
+WORLD_VOLUME_MM3 = WORLD_SIZE_MM[0] * WORLD_SIZE_MM[1] * WORLD_SIZE_MM[2]
+
+# Approximate volume of the gel used in the experiments
+GEL_VOLUME_MM3 = 60.0
+
 # ---------------------------------------------------------------------
 # This list of output metrics is shared across all the files in the
 # optimization protocol. ONLY edit here whenever you want to change what is
@@ -443,11 +450,11 @@ def run_ABM(config_file: Path, numticks: int = METRICS_NUMTICKS, workdir: Path |
             "--config",
             str(config_arg),
             "--wxw",
-            "0.5",
+            str(WORLD_SIZE_MM[0]),
             "--wyw",
-            "0.4",
+            str(WORLD_SIZE_MM[1]),
             "--wzw",
-            "0.3"
+            str(WORLD_SIZE_MM[2])
         ], stdout=stdout_file, stderr=stderr_file, cwd=str(base), env=env)
 
     if status != 0:

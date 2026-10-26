@@ -183,7 +183,7 @@ pip list || { echo "pip is not working correctly"; exit 1; }
 
 echo "Installing dependencies..."
 
-pip install --upgrade pip || { echo "Failed to upgrade pip"; exit 1; }
+pip install --no-index --upgrade pip || { echo "Failed to upgrade pip"; exit 1; }
 pip install --no-index -r requirements.txt || { echo "Failed to install Python dependencies"; exit 1; }
 pip freeze > output/installed_packages.txt
 

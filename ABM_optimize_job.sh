@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --account=rrg-nicoleli
-#SBATCH --time=12:00:00
+#SBATCH --time=18:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=h100:1
-#SBATCH --mem=64000M
+#SBATCH --gpus=h100_3g.40gb:1
+#SBATCH --mem=62000M
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --mail-type=ALL
 

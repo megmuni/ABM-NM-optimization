@@ -14,6 +14,7 @@ generated_samples_with_outputs.csv
 bin/*
 
 # will be populated by the script
+archives/
 output/
 verification_results.json
 optimization_results.json

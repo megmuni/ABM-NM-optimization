@@ -121,8 +121,15 @@ echo "Conditions: ${conditions[*]}"
 current_date=$(date +"%Y-%m-%d_%H-%M-%S")
 tarball_name="../param_opt_${current_date}_${mode}_${conditions_safe}.tar.gz"
 
-# trap to package directory on any exit (success or failure)
-trap 'echo "Packaging directory (trap)..."; tar -czf "$tarball_name" . && echo "Packaged directory into: $tarball_name"' EXIT
+# =========================================
+# Run archive - every run is snapshotted to archives/ on exit
+# each tarball contains the configs, results JSON, the logs, parameters.xlsx used,
+# and simulation config JSON
+
+mkdir -p archives
+tarball_name="archives/param_opt_${current_date}_${mode}_${conditions_safe}.tar.gz"
+
+trap 'echo "Packaging directory (trap)..."; tar --exclude=./archives -czf "$tarball_name" . && echo "Packaged directory into: $tarball_name ($(du -h "$tarball_name" 2>/dev/null | cut -f1))"' EXIT
 
 # =========================================
 # Some checks to make the job fail immediately with a clear message:

@@ -517,6 +517,38 @@ def run_conditions(
 
     return errors_by_condition
 
+def spec_fingerprint() -> str:
+    """
+    Fingerprint of everything that changes what an SSE *means*: the fitted
+    targets (their labels, days, columns and experimental columns) and the
+    files the objective is computed from.
+
+    This goes into the cache key, so editing OUTPUT_METRICS in ABM.py, the
+    config template, or the experimental data invalidates old entries
+    automatically instead of mixing incomparable SSEs -- or, worse,
+    returning a cached dict that lacks the keys the new spec asks for.
+    """
+    payload = {
+        "targets": [
+            {
+                "label": metric_label(t),
+                "day": t["day"],
+                "column": t["column"],
+                "exp_column": t.get("exp_column"),
+            }
+            for t in TARGETS
+        ],
+        "numticks": NUMTICKS,
+    }
+    for f in (CONFIG_TEMPLATE, Path("experimental_config.csv")):
+        try:
+            payload[str(f)] = hashlib.sha256(Path(f).read_bytes()).hexdigest()[:16]
+        except OSError:
+            payload[str(f)] = None
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode()
+    ).hexdigest()[:16]
+
 def cache_key(param_values: list, conditions: list[str], iters: int) -> str:
     """
     Cache identity for one objective evaluation. Includes the conditions

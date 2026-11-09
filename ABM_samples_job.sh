@@ -84,7 +84,7 @@ echo "Creating virtual environment in $SLURM_TMPDIR/env ..."
 virtualenv --no-download "$SLURM_TMPDIR/env" || { echo "Virtualenv creation failed"; exit 1; }
 source "$SLURM_TMPDIR/env/bin/activate" || { echo "Failed to activate virtualenv"; exit 1; }
 
-pip install --upgrade pip --quiet || { echo "Failed to upgrade pip"; exit 1; }
+pip install --no-index --upgrade pip --quiet || { echo "Failed to upgrade pip"; exit 1; }
 pip install --no-index -r requirements.txt || { echo "Failed to install dependencies"; exit 1; }
 
 # =========================================

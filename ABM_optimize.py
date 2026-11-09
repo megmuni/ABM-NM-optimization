@@ -653,96 +653,96 @@ def make_objective(
     same sequence of points and gets cache hits until it reaches the point
     the previous job died on.
     """
-state = {"nfeval": 1, "history": [], "cache_hits": 0, "started": time.time()}
+    state = {"nfeval": 1, "history": [], "cache_hits": 0, "started": time.time()}
 
-    def objective(x: np.ndarray) -> float:
-        nfeval = state["nfeval"]
+def objective(x: np.ndarray) -> float:
+    nfeval = state["nfeval"]
 
-        # Start from the spreadsheet defaults and overwrite only the
-        # parameters being optimized with the simplex's current values
-        sam = np.array(default_values, dtype=float)
-        for idx, param in enumerate(params):
-            sam[param] = x[idx]
-        param_values = sam.tolist()
+    # Start from the spreadsheet defaults and overwrite only the
+    # parameters being optimized with the simplex's current values
+    sam = np.array(default_values, dtype=float)
+    for idx, param in enumerate(params):
+        sam[param] = x[idx]
+    param_values = sam.tolist()
 
-        key = cache_key(param_values, conditions, args.iters)
-        cached = cache.get(key) if not args.no_cache else None
+    key = cache_key(param_values, conditions, args.iters)
+    cached = cache.get(key) if not args.no_cache else None
 
-        # A hit from an older cache format (or one written before the
-        # metric spec changed) may not carry every target. Treat that as a
-        # miss rather than failing with a KeyError deep inside scipy.
-        if cached is not None:
-            needed = {metric_label(t) for t in TARGETS}
-            have = cached.get("errors_by_condition", {})
-            if any(needed - set(have.get(c, {})) for c in conditions):
-                print(f"  Evaluation {nfeval}: stale cache entry "
-                      f"(missing {sorted(needed - set(have.get(conditions[0], {})))}) "
-                      f"-- re-running")
-                cached = None
+    # A hit from an older cache format (or one written before the
+    # metric spec changed) may not carry every target. Treat that as a
+    # miss rather than failing with a KeyError deep inside scipy.
+    if cached is not None:
+        needed = {metric_label(t) for t in TARGETS}
+        have = cached.get("errors_by_condition", {})
+        if any(needed - set(have.get(c, {})) for c in conditions):
+            print(f"  Evaluation {nfeval}: stale cache entry "
+                f"(missing {sorted(needed - set(have.get(conditions[0], {})))}) "
+                f"-- re-running")
+            cached = None
 
-        if cached is not None:
-            errors_by_condition = cached["errors_by_condition"]
-            state["cache_hits"] += 1
-            print(f"  Evaluation {nfeval}: cache hit "
-                  f"(total SSE {cached['total_sse']:.6f}) -- skipping "
-                  f"{len(conditions) * args.iters} ABM execution(s)")
-        else:
-            errors_by_condition = run_conditions(
-                conditions, experimental_df, param_values,
-                param_names, nfeval, args,
-            )
+    if cached is not None:
+        errors_by_condition = cached["errors_by_condition"]
+        state["cache_hits"] += 1
+        print(f"  Evaluation {nfeval}: cache hit "
+            f"(total SSE {cached['total_sse']:.6f}) -- skipping "
+            f"{len(conditions) * args.iters} ABM execution(s)")
+    else:
+        errors_by_condition = run_conditions(
+            conditions, experimental_df, param_values,
+            param_names, nfeval, args,
+        )
 
-        # Flatten to the objective vector Y: one entry per target per
-        # condition, in (condition, target) order
-        Y = np.array([
-            errors_by_condition[condition][metric_label(target)]
-            for condition in conditions
-            for target in TARGETS
-        ])
+    # Flatten to the objective vector Y: one entry per target per
+    # condition, in (condition, target) order
+    Y = np.array([
+        errors_by_condition[condition][metric_label(target)]
+        for condition in conditions
+        for target in TARGETS
+    ])
 
-        total = float(np.sum(Y))
+    total = float(np.sum(Y))
 
-        if cached is None and not args.no_cache:
-            cache[key] = {
-                "errors_by_condition": errors_by_condition,
-                "total_sse": total,
-                "x": [float(v) for v in x],
-                "spec": spec_fingerprint(),
-            }
-            # Written after every evaluation, not at the end: the whole
-            # point is to survive the job being killed
-            save_cache(args.cache, cache)
-
-        # Progress line: one per evaluation, timestamped, with best-so-far
-        # and a budget estimate. This is what you watch with
-        # `tail -f slurm-<jobid>.out`.
-        best = min([h["total_sse"] for h in state["history"]] + [total])
-        elapsed = time.time() - state["started"]
-        budget = args.maxfev or (len(params) + 1 + args.maxiter * 2)
-        rate = elapsed / nfeval
-        remaining = max(budget - nfeval, 0) * rate
-
-        print(f"[{time.strftime('%H:%M:%S')}] eval {nfeval}/~{budget} "
-              f"| SSE {total:.4g} | best {best:.4g} "
-              f"| elapsed {elapsed / 60:.1f} min "
-              f"| est. remaining {remaining / 60:.0f} min"
-              + ("  (cached)" if cached is not None else ""), flush=True)
-
-        print(formatted_string(nfeval, x, Y))
-        print({c: errors_by_condition[c] for c in conditions})
-        print(f"  total SSE over {len(conditions)} condition(s) "
-              f"({', '.join(conditions)}): {total:.6f}", flush=True)
-
-        state["history"].append({
-            "nfeval": nfeval,
-            "x": [float(v) for v in x],
+    if cached is None and not args.no_cache:
+        cache[key] = {
             "errors_by_condition": errors_by_condition,
             "total_sse": total,
-            "from_cache": cached is not None,
-        })
-        state["nfeval"] = nfeval + 1
+            "x": [float(v) for v in x],
+            "spec": spec_fingerprint(),
+        }
+        # Written after every evaluation, not at the end: the whole
+        # point is to survive the job being killed
+        save_cache(args.cache, cache)
 
-        return total  # SSE
+    # Progress line: one per evaluation, timestamped, with best-so-far
+    # and a budget estimate. This is what you watch with
+    # `tail -f slurm-<jobid>.out`.
+    best = min([h["total_sse"] for h in state["history"]] + [total])
+    elapsed = time.time() - state["started"]
+    budget = args.maxfev or (len(params) + 1 + args.maxiter * 2)
+    rate = elapsed / nfeval
+    remaining = max(budget - nfeval, 0) * rate
+
+    print(f"[{time.strftime('%H:%M:%S')}] eval {nfeval}/~{budget} "
+        f"| SSE {total:.4g} | best {best:.4g} "
+        f"| elapsed {elapsed / 60:.1f} min "
+        f"| est. remaining {remaining / 60:.0f} min"
+        + ("  (cached)" if cached is not None else ""), flush=True)
+
+    print(formatted_string(nfeval, x, Y))
+    print({c: errors_by_condition[c] for c in conditions})
+    print(f"  total SSE over {len(conditions)} condition(s) "
+        f"({', '.join(conditions)}): {total:.6f}", flush=True)
+
+    state["history"].append({
+        "nfeval": nfeval,
+        "x": [float(v) for v in x],
+        "errors_by_condition": errors_by_condition,
+        "total_sse": total,
+        "from_cache": cached is not None,
+    })
+    state["nfeval"] = nfeval + 1
+
+    return total  # SSE
 
     objective.state = state
     return objective

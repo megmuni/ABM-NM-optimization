@@ -408,6 +408,7 @@ def prepare_workdir(workdir: Path, extra_files: list[Path] | None = None) -> Pat
     workdir = Path(workdir)
     (workdir / "output").mkdir(parents=True, exist_ok=True)
     (workdir / "configFiles").mkdir(parents=True, exist_ok=True)
+    (workdir / "output" / "SensitivityAnalysis").mkdir(parents=True, exist_ok=True)
 
     bin_link = workdir / "bin"
     if not bin_link.exists():
@@ -427,6 +428,7 @@ def run_ABM(config_file: Path, numticks: int = METRICS_NUMTICKS, workdir: Path |
     base = Path(workdir) if workdir is not None else Path(".")
     out_dir = base / OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "SensitivityAnalysis").mkdir(parents=True, exist_ok=True)
 
     stdout_file_name = out_dir / "stdout.txt"
     stderr_file_name = out_dir / "stderr.txt"

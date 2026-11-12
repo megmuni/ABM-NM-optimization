@@ -59,7 +59,7 @@ CELL_VIABILITY_COL = "Viability Rate(%)"
 PERCENT_DIFF_COL = "Differentiation (%)"
 
 # simulated world size
-WORLD_SIZE_MM = (0.5, 0.4, 0.3)
+WORLD_SIZE_MM = (1, 1, 1)
 WORLD_VOLUME_MM3 = WORLD_SIZE_MM[0] * WORLD_SIZE_MM[1] * WORLD_SIZE_MM[2]
 
 # Approximate volume of the gel used in the experiments

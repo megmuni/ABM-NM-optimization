@@ -384,15 +384,33 @@ def extract_output_metrics(output_file: Path,
         )
 
     # Fetch each needed day once, then pull every column for that day
+    needed_days = {m["day"] for m in metrics}
+    needed_days |= {m["relative_to_day"] for m in metrics
+                    if m.get("relative_to_day") is not None}
     rows = {
         day: extract_biomarkers_at_day(df, day, str(output_file))
-        for day in sorted({m["day"] for m in metrics})
+        for day in sorted(needed_days)
     }
 
-    return {
-        metric_label(m): float(rows[m["day"]][m["column"]])
-        for m in metrics
-    }
+    values = {}
+    for m in metrics:
+        value = float(rows[m["day"]][m["column"]])
+
+        # Ratio metric: divide by the same column at the reference day,
+        # e.g. cells at day 21 over cells at day 0.
+        ref_day = m.get("relative_to_day")
+        if ref_day is not None:
+            baseline = float(rows[ref_day][m["column"]])
+            if baseline == 0:
+                raise ValueError(
+                    f"Cannot compute {metric_label(m)}: '{m['column']}' is "
+                    f"zero at day {ref_day}, so the fold change is undefined."
+                )
+            value = value / baseline
+
+        values[metric_label(m)] = value
+
+    return values
 
 def format_output_metrics(values: dict[str, float]) -> str:
     """

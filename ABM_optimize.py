@@ -83,7 +83,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Which scaffold conditions to fit (default: all)"
     )
     parser.add_argument(
-        "--iters", type=int, default=2,
+        "--iters", type=int, default=3,
         help="ABM runs per condition per function evaluation, averaged"
     )
     parser.add_argument(
@@ -108,8 +108,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument(
-        "--tol", type=float, default=1e-3,
-        help="Nelder-Mead convergence tolerance"
+        "--xatol", type=float, default=None,
+        help=(
+            "Nelder-Mead parameter tolerance: converged when every simplex "
+            "vertex is within this of the best vertex in EVERY parameter. "
+            "Absolute, so scale it to your parameter ranges -- with bounds "
+            "spanning 1-100, something like 0.5 is meaningful. Defaults to "
+            "--tol if given, else scipy's 1e-4."
+        )
+    )
+    parser.add_argument(
+        "--fatol", type=float, default=None,
+        help=(
+            "Nelder-Mead objective tolerance: converged when every vertex's "
+            "SSE is within this of the best. Scale it to your SSE -- with a "
+            "relative-error total near 3, something like 0.01 is ~0.3%%. "
+            "Defaults to --tol if given, else scipy's 1e-4."
+        )
+    )
+    parser.add_argument(
+        "--tol", type=float, default=None,
+        help=(
+            "Sets BOTH --xatol and --fatol. Kept for convenience, but the two "
+            "are on different scales (parameter units vs SSE units), so "
+            "setting them separately is usually what you want. Both "
+            "conditions must hold for convergence, so the tighter one governs."
+        )
     )
     parser.add_argument(
         "--parallel", type=int, default=None,
@@ -777,10 +801,12 @@ def run_optimization(
         objective,
         selected_defaults,
         method='nelder-mead',
-        tol=args.tol,
         bounds=selected_bounds,
         options={
             'maxiter': args.maxiter,
+            **({'maxfev': args.maxfev} if args.maxfev else {}),
+            **({'xatol': args.xatol} if args.xatol is not None else {}),
+            **({'fatol': args.fatol} if args.fatol is not None else {}),
             'disp': True,
             'initial_simplex': initial_simplex,
             'return_all': True,
@@ -836,6 +862,15 @@ if __name__ == "__main__":
 
     # Resolve the parallelism / storage defaults now, so everything
     # downstream sees concrete values
+
+    # --tol is a shorthand for both; an explicit --xatol/--fatol wins
+    if args.xatol is None:
+        args.xatol = args.tol
+    if args.fatol is None:
+        args.fatol = args.tol
+    print(f"Tolerances: xatol={args.xatol or 'scipy default (1e-4)'}, "
+          f"fatol={args.fatol or 'scipy default (1e-4)'}")
+
     if args.devices is None:
         args.devices = int(os.environ.get("SLURM_GPUS_ON_NODE", "1") or 1)
     if args.parallel is None:
@@ -956,7 +991,8 @@ Cost estimate before starting:
         "settings": {
             "iters_per_evaluation": args.iters,
             "maxiter": args.maxiter,
-            "tol": args.tol,
+            "xatol": args.xatol,
+            "fatol": args.fatol,
             "numticks": NUMTICKS,
             "error_mode": "squared relative error",
             "parallel": args.parallel,

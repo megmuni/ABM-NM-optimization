@@ -108,7 +108,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument(
-        "--xatol", type=float, default=None,
+        "--xatol", type=float, default=0.5,
         help=(
             "Nelder-Mead parameter tolerance: converged when every simplex "
             "vertex is within this of the best vertex in EVERY parameter. "
@@ -118,7 +118,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument(
-        "--fatol", type=float, default=None,
+        "--fatol", type=float, default=0.01,
         help=(
             "Nelder-Mead objective tolerance: converged when every vertex's "
             "SSE is within this of the best. Scale it to your SSE -- with a "
